@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myWIPhealing — For Schools &amp; Universities</title>
+<meta name="description" content="Creative, peer-led mental health programmes for Malaysian schools and universities, with an anonymised impact dashboard for every campus.">
+<meta name="theme-color" content="#F5EFE6">
+<link rel="icon" href="/img/favicon.webp" type="image/webp">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/brand.css">
+<link rel="stylesheet" href="/sitebar.css">
+<link rel="stylesheet" href="/wip.css">
+<style>
+  .theme-education { --accent: var(--forest); --accent-soft: var(--mint); }
+
+  /* Intro */
+  .lede { font-size: 17px; line-height: 1.6; color: var(--muted-strong); max-width: 46em; }
+  .cta-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  .btn-lg { padding: 13px 24px; font-size: 15px; }
+  .offer h4 { font-family: var(--font-display); font-size: 1.15rem; margin: 10px 0 6px; }
+  .offer p { font-size: 14px; line-height: 1.55; color: var(--muted-strong); }
+  .offer .emoji { font-size: 26px; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--ink); background: var(--mint); }
+  .offer:nth-child(2) .emoji { background: var(--pink); }
+  .offer:nth-child(3) .emoji { background: var(--lavender); }
+
+  /* Sample dashboard frame */
+  .section-title { font-family: var(--font-display); font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
+  .sample-note {
+    display: flex; gap: 12px; align-items: flex-start; background: var(--banana-pastel);
+    border: 1.5px dashed var(--ink); border-radius: 18px; padding: 14px 18px; font-size: 14px; line-height: 1.5;
+  }
+  .sample-note b { font-family: var(--font-display); }
+  .seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: var(--radius-pill); overflow: hidden; background: var(--white); }
+  .seg button {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 8px 16px; border: 0; background: transparent;
+    color: var(--ink); cursor: pointer;
+  }
+  .seg button + button { border-left: 1.5px solid var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--white); }
+  .dash-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  .bar-row .tier.wide { width: 170px; flex-shrink: 0; font-size: 13px; line-height: 1.25; }
+  .bar-row .tier.wide small { display: block; font-weight: 500; color: var(--muted); font-size: 11px; }
+  .bar-fill { font-size: 12px; font-weight: 700; display: flex; align-items: center; padding-left: 10px; white-space: nowrap; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1.2px solid var(--ink); border-radius: var(--radius-pill); padding: 5px 12px; font-size: 13px; background: var(--white); }
+  .chip b { font-family: var(--font-display); }
+
+  .checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .checklist li { display: flex; gap: 10px; font-size: 14px; line-height: 1.45; }
+  .checklist li::before { content: "✓"; flex: 0 0 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: var(--leaf); border: 1.2px solid var(--ink); }
+
+  /* Case studies */
+  .case { background: var(--white); }
+  .case .kind { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; border: 1.2px solid var(--ink); border-radius: 12px; padding: 2px 9px; background: var(--sky); }
+  .case.school .kind { background: var(--pink); }
+  .case h4 { font-family: var(--font-display); font-size: 1.1rem; margin: 10px 0 4px; }
+  .case .meta { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+  .case p { font-size: 14px; line-height: 1.55; }
+  .case .learned { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted-strong); }
+  .case .learned b { color: var(--ink); }
+
+  @media (max-width: 560px) {
+    .section-title { font-size: 1.6rem; }
+    .bar-row .tier.wide { width: 118px; font-size: 12px; }
+    .seg button { padding: 8px 12px; }
+  }
+</style>
+</head>
+<body class="theme-education">
+<nav class="sitebar" aria-label="myWIPhealing site">
+  <a class="sb-home" href="/"><img src="/img/wip-logo.png" alt=""><span>myWIPhealing</span></a>
+  <div class="sb-links">
+    <a href="/community.html">Our Impact</a>
+    <a href="/education/" aria-current="page">For Education</a>
+    <a href="/bot/">Impact Survey</a>
+  </div>
+</nav>
+<div class="wrap stack">
+
+  <div class="appbar">
+    <svg class="sticker a" viewBox="0 0 100 100" aria-hidden="true"><use href="/img/doodles.svg#d-sparkle"/></svg>
+    <svg class="sticker b" viewBox="0 0 100 100" aria-hidden="true"><use href="/img/doodles.svg#d-star"/></svg>
+    <div class="brand-mark">
+      <span class="logo-badge"><img src="/img/wip-logo.png" alt=""></span>
+      <div>
+        <h1>myWIPhealing <span class="swash">for Education</span></h1>
+        <div class="subtitle">Creative mental health programmes for schools &amp; universities</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="lede">Students are carrying more than grades: pressure to perform, social media, stigma, and not knowing where to turn. We bring art therapy, psychoeducation and peer support onto campus, from primary pupils to foundation-year students, and show you what changed.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary btn-lg" href="/contact/">Bring this to your campus</a>
+      <a class="btn btn-outline btn-lg" href="#sample">See a sample dashboard</a>
+    </div>
+  </div>
+
+  <div class="grid grid-3">
+    <div class="card offer">
+      <span class="emoji" aria-hidden="true">🎨</span>
+      <h4>Art therapy sessions</h4>
+      <p>Guided workshops on emotional regulation, mindfulness, body acceptance and self-worth. Visual art, music, movement and drama. No artistic skill needed.</p>
+    </div>
+    <div class="card offer">
+      <span class="emoji" aria-hidden="true">🤝</span>
+      <h4>Peer-supporter training</h4>
+      <p>Our SHIPS programme trains students and staff to run art-based peer support, so care continues after we leave.</p>
+    </div>
+    <div class="card offer">
+      <span class="emoji" aria-hidden="true">🌱</span>
+      <h4>Campus outreach days</h4>
+      <p>Awareness events and panels in the spirit of our Art of Healing festival, built around your students' wellbeing, inclusion or exam season.</p>
+    </div>
+  </div>
+
+  <!-- Sample dashboard -->
+  <div id="sample" class="stack">
+    <div class="dash-head">
+      <h2 class="section-title">What your dashboard could look like</h2>
+      <div class="seg" role="group" aria-label="Show sessions from">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="university" aria-pressed="false">Universities</button>
+        <button type="button" data-filter="school" aria-pressed="false">Schools</button>
+      </div>
+    </div>
+    <div class="sample-note">
+      <span aria-hidden="true">🧪</span>
+      <div><b>Sample dashboard.</b> Built from eight real myWIPhealing sessions in Malaysian schools and universities (2022–2024), taken from our Social Impact Report. Your institution's dashboard shows only your own sessions, updated as students respond.</div>
+    </div>
+
+    <div class="grid grid-4" id="kpis"></div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3><span class="dot"></span> Students reached, by session</h3>
+        <div class="bars" id="attendance"></div>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span> What students told us they struggle with</h3>
+        <div class="bars" id="themes"></div>
+        <div class="muted" style="font-size:11.5px;margin-top:12px">Number of sessions where each theme came up in facilitator notes.</div>
+      </div>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3><span class="dot"></span> How they felt, before and after</h3>
+        <div id="shift"></div>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span> Activities used</h3>
+        <div class="chips" id="formats"></div>
+        <h3 style="margin-top:22px"><span class="dot"></span> Every campus report includes</h3>
+        <ul class="checklist">
+          <li>Anonymised before-and-after wellbeing scores for each session</li>
+          <li>Themes students raise, so counsellors know where to focus</li>
+          <li>Attendance and engagement across the term</li>
+          <li>Student reflections, shared only with their consent</li>
+          <li>A printable one-page summary for your management or board</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Case studies -->
+  <h2 class="section-title" style="margin-top:36px">Where we've been</h2>
+  <div class="grid grid-2" id="cases"></div>
+
+  <div class="roi">
+    <div>
+      <h3>Bring creative healing to your campus</h3>
+      <p>Tell us about your students and we'll suggest a programme: a single outreach session, a term of workshops, or peer-supporter training. We'll set up your dashboard from day one.</p>
+    </div>
+    <div class="cta-row" style="margin:0">
+      <a class="btn btn-primary btn-lg" href="/contact/">Contact us</a>
+      <a class="btn btn-outline btn-lg" href="/community.html">See our live impact</a>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span class="brand">myWIPhealing · For Education</span>
+    <span>Session data from the myWIPhealing Social Impact Report, 2022–2024</span>
+    <span>Powered by Gym Brain</span>
+  </div>
+</div>
+
+<script>
+// Sessions and insights from the myWIPhealing Social Impact Report (4 years).
+// "themes" are what the facilitators recorded students struggling with.
+const SESSIONS = [
+  { kind: "university", name: "UniKL", title: "UniKL Community Outreach", who: "Foundation students", n: 156,
+    format: "Emotional-expression worksheet", did: "Art therapy focused on emotional regulation and mindfulness.",
+    learned: "Students face stigma from peers and lack access to professional help.",
+    themes: ["Stigma", "Access to help"] },
+  { kind: "university", name: "UCSI", title: "UCSI Vietnam Student Exchange", who: "Exchange students from Vietnam", n: 107,
+    format: "Art therapy in English class", did: "An English class combined with mindfulness and emotional-expression art.",
+    learned: "Students across countries share the same stigma and low awareness of mental health.",
+    themes: ["Stigma", "Low awareness"] },
+  { kind: "university", name: "Limkokwing", title: "IncluCity × Limkokwing", who: "Students and the NakSeni disability community", n: 20,
+    format: "Panel discussion", did: "A mental health sharing on bridging the inclusion gap through creativity.",
+    learned: "A wide gap remains between society and people with disabilities, from lack of education and accessibility.",
+    themes: ["Low awareness", "Access to help"] },
+  { kind: "school", name: "Sekolah Sukan Pahang", title: "Sekolah Sukan Pahang", who: "Pupils aged 7–17", n: 300,
+    format: "Emotional-expression worksheet", did: "Emotional regulation, and channelling feelings into art and sport.",
+    learned: "Student athletes struggle with weak family connection and peer pressure.",
+    themes: ["Family connection", "Peer pressure"] },
+  { kind: "school", name: "SMK Dato Mohd Said", title: "SMK Dato Mohd Said, Nilai", who: "Form 4 & 5", n: 130,
+    format: "Body acceptance & self-love", did: "An art therapy session on body acceptance and practising self-love.",
+    learned: "Students are shaped by social media and a lack of family support.",
+    themes: ["Social media", "Family connection"] },
+  { kind: "school", name: "SBPI Gombak", title: "SBPI Gombak × Noble Dr", who: "Form 4 & 5", n: 115,
+    format: "Emotional-expression worksheet", did: "Art therapy focused on emotional regulation and mindfulness.",
+    learned: "Students struggle with pressure to perform academically.",
+    themes: ["Academic pressure"] },
+  { kind: "school", name: "SMK Aminuddin Baki", title: "SMK Aminuddin Baki", who: "Form 4 & 5", n: 100,
+    format: "Mindfulness line art", did: "Mindful line art on noticing our thoughts and emotions.",
+    learned: "Social media trends, self-diagnosis and doom-scrolling shape how students cope.",
+    themes: ["Social media", "Unhealthy coping"] },
+  { kind: "school", name: "#beMindful, Green Factory", title: "#beMindful × Fariza, Green Factory", who: "Form 4 & 5", n: 15,
+    format: "Miniature wooden painting", did: "Miniature wooden painting as a way into emotional expression.",
+    learned: "With the right support and a safe space, students express their emotions creatively.",
+    themes: [] },
+];
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const n1 = (v) => (v === null || v === undefined ? "—" : v);
+
+function kpi(label, value, context) {
+  return `<div class="kpi"><div class="kpi-label">${esc(label)}</div>
+    <div class="kpi-value">${esc(value)}</div><div class="kpi-context">${esc(context)}</div></div>`;
+}
+
+function bar(label, sub, value, max, text) {
+  return `<div class="bar-row"><div class="tier wide">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>
+    <div class="bar-track"><div class="bar-fill after" style="width:${Math.max(18, Math.round((value / max) * 100))}%">${esc(text)}</div></div></div>`;
+}
+
+function render(filter) {
+  const rows = SESSIONS.filter((s) => filter === "all" || s.kind === filter);
+  const total = rows.reduce((a, s) => a + s.n, 0);
+  const unis = rows.filter((s) => s.kind === "university").length;
+  const schools = rows.length - unis;
+
+  $("kpis").innerHTML = [
+    kpi("Students reached", total.toLocaleString(), "Across the sessions shown"),
+    kpi("Sessions", rows.length, `${unis} university · ${schools} school`),
+    kpi("Average group", Math.round(total / rows.length), "Students per session"),
+    { all: kpi("Ages", "7 → uni", "From primary pupils to university"),
+      school: kpi("Ages", "7–17", "Primary and secondary"),
+      university: kpi("Level", "Tertiary", "Foundation and exchange students") }[filter],
+  ].join("");
+
+  const max = Math.max(...rows.map((s) => s.n));
+  $("attendance").innerHTML = [...rows].sort((a, b) => b.n - a.n)
+    .map((s) => bar(s.name, s.kind === "university" ? "University" : "School", s.n, max, s.n)).join("");
+
+  const counts = {};
+  for (const s of rows) for (const t of s.themes) counts[t] = (counts[t] || 0) + 1;
+  const themes = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const tMax = Math.max(1, ...themes.map((t) => t[1]));
+  $("themes").innerHTML = themes.length
+    ? themes.map(([t, c]) => bar(t, "", c, tMax, `${c} session${c > 1 ? "s" : ""}`)).join("")
+    : '<div class="muted">No themes recorded for these sessions.</div>';
+
+  const formats = {};
+  for (const s of rows) formats[s.format] = (formats[s.format] || 0) + 1;
+  $("formats").innerHTML = Object.entries(formats).sort((a, b) => b[1] - a[1])
+    .map(([f, c]) => `<span class="chip">${esc(f)}${c > 1 ? ` <b>×${c}</b>` : ""}</span>`).join("");
+
+  $("cases").innerHTML = rows.map((s) => `
+    <div class="card case ${s.kind}">
+      <span class="kind">${s.kind === "university" ? "University" : "School"}</span>
+      <h4>${esc(s.title)}</h4>
+      <div class="meta">${esc(s.who)} · ${s.n} participants</div>
+      <p>${esc(s.did)}</p>
+      <p class="learned"><b>What we learned:</b> ${esc(s.learned)}</p>
+    </div>`).join("");
+}
+
+// Before/after: the school sessions above predate the survey, so this card
+// shows the live anonymised scores from our community sessions instead.
+async function loadShift() {
+  let s;
+  try {
+    const res = await fetch("/api/public/community");
+    if (!res.ok) throw new Error();
+    s = (await res.json()).stats;
+  } catch { s = null; }
+  const pair = (label, before, after) => {
+    const pct = (v) => (v === null || v === undefined ? 0 : Math.round((v / 5) * 100));
+    return `<div class="bar-group"><div class="bar-group-label">${esc(label)}</div>
+      <div class="bar-row"><div class="tier">Before</div><div class="bar-track"><div class="bar-fill" style="width:${pct(before)}%">${n1(before)}</div></div></div>
+      <div class="bar-row"><div class="tier">After</div><div class="bar-track"><div class="bar-fill after" style="width:${pct(after)}%">${n1(after)}</div></div></div></div>`;
+  };
+  $("shift").innerHTML = s && s.total
+    ? `<div class="bars">${pair("Sense of self-worth (1–5)", s.preWorth, s.postWorth)}${pair("Mind state (1–5) · before = heaviness, after = calm", s.preHeavy, s.postPeace)}</div>
+       <div class="muted" style="font-size:11.5px;margin-top:12px">Live, anonymised scores from our community sessions (n=${s.total}). On your dashboard this shows your students only.</div>`
+    : `<div class="muted">Each student rates how they feel before and after the session in a short chat survey. Scores appear here, anonymised, as responses come in.</div>`;
+}
+
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  render(b.dataset.filter);
+}));
+render("all");
+loadShift();
+</script>
+</body>
+</html>

@@ -22,6 +22,27 @@ const NAV_ITEMS = [
   { href: "/community.html", label: "Our Impact" },
   { href: "/bot/", label: "Impact Survey" },
 ];
+// The header only has room for one of them next to "For Education"; the
+// survey stays reachable from the footer, the homepage and Our Impact.
+const HEADER_ITEMS = NAV_ITEMS.filter((i) => i.href !== "/bot/");
+// Headline figures WordPress states as exact counts, which disagree with the
+// impact report. Keep them generic until there is one agreed source.
+// Each count-up loses its "kb-count-up" class so Kadence's animation skips it.
+const GENERIC_COUNTS = [
+  { end: "10200", number: "Thousands", title: "of individuals reached through workshops, community sessions, and public programmes." },
+  { end: "12500", number: "Thousands", title: "of hours of creative healing delivered in Kuala Lumpur, Shah Alam, Johor, and many more." },
+  { end: "30", number: "Dozens", title: "of communities engaged across youth, B40s, women, working adults, and disabled community." },
+];
+const GENERIC_TEXT = [
+  ["Trusted by 100+ of organizations throughout the years", "Trusted by organisations across Malaysia since 2021"],
+  ['<mark true="true" class="kt-highlight">31,000+ people</mark>', '<mark true="true" class="kt-highlight">thousands of people</mark>'],
+  // SHIPS page
+  ['data-kb-block="kb-adv-heading5648_d987d7-91">10,000+</div>', 'data-kb-block="kb-adv-heading5648_d987d7-91">Thousands</div>'],
+  ['data-kb-block="kb-adv-heading5648_bbe33b-1f">lives impacted by SHIPS</div>', 'data-kb-block="kb-adv-heading5648_bbe33b-1f">of lives touched by SHIPS</div>'],
+  ['data-kb-block="kb-adv-heading5648_c9458c-bd">300+</div>', 'data-kb-block="kb-adv-heading5648_c9458c-bd">Hundreds</div>'],
+  ['data-kb-block="kb-adv-heading5648_6328a3-64">sessions delivered</div>', 'data-kb-block="kb-adv-heading5648_6328a3-64">of sessions delivered</div>'],
+];
+
 const FOOTER_LEGAL = [
   { href: "/privacy-policy/", label: "Privacy Policy" },
   { href: "/ships-terms-of-service/", label: "SHIPS Terms of Service" },
@@ -63,7 +84,7 @@ function closingDivEnd(html, from) {
 }
 
 function navItems() {
-  const items = NAV_ITEMS.map(
+  const items = HEADER_ITEMS.map(
     (i) =>
       `<li class="wp-block-kadence-navigation-link menu-item wip-nav-item"><div class="kb-link-wrap">` +
       `<a class="kb-nav-link-content" href="${i.href}">${i.label}</a></div></li>\n`
@@ -76,12 +97,24 @@ function addToPage(html, { home }) {
   const missed = [];
   html = strip(html);
 
+  // Generic headline figures (in place, like the Resources rewrite below).
+  for (const c of GENERIC_COUNTS) {
+    const re = new RegExp(`<div class="wp-block-kadence-countup (kb-count-up-[\\w-]+) kb-count-up" data-start="[^"]*" data-end="${c.end}"[^>]*><div class="kb-count-up-process kb-count-up-number"></div><p class="kb-count-up-title">[^<]*</p>`);
+    html = html.replace(re, (m, id) =>
+      `<div class="wp-block-kadence-countup ${id}"><div class="kb-count-up-number">${c.number}</div><p class="kb-count-up-title">${c.title}</p>`);
+  }
+  for (const [from, to] of GENERIC_TEXT) html = html.split(from).join(to);
+
   // Header "Resources" dropdown holds only Peer Stories: make it a plain link.
   // Rewrites WordPress's markup in place (not marker-wrapped), so re-runs find
   // nothing to do.
   const resDrop = /<li class="wp-block-kadence-navigation-link[^"]*menu-item-has-children[^"]*"><div class="kb-link-wrap"><a class="kb-nav-link-content" role="button">Resources<\/a>[\s\S]*?<\/ul><\/li>/g;
   html = html.replace(resDrop,
     `<li class="wp-block-kadence-navigation-link menu-item"><div class="kb-link-wrap"><a class="kb-nav-link-content" href="/ships-peer-stories/">Peer Stories</a></div></li>`);
+
+  // "For Education" sits next to "For Corporate", its sibling audience page.
+  const corp = /<li class="wp-block-kadence-navigation-link[^"]*"><div class="kb-link-wrap"><a class="kb-nav-link-content" href="\/corporate\/">For Corporate<\/a><\/div><\/li>/g;
+  html = html.replace(corp, (m) => m + wrap("nav-edu", `\n\n<li class="wp-block-kadence-navigation-link menu-item wip-nav-item"><div class="kb-link-wrap"><a class="kb-nav-link-content" href="/education/">For Education</a></div></li>`));
 
   // Header menus (desktop + mobile drawer share the markup): before "About".
   const about = /<li class="wp-block-kadence-navigation-link[^"]*"><div class="kb-link-wrap"><a class="kb-nav-link-content" href="\/about-us\/">/g;

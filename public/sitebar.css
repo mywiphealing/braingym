@@ -18,7 +18,8 @@
 .sitebar .sb-links a:hover { background: rgba(29, 29, 31, .06); }
 .sitebar .sb-links a[aria-current="page"] { background: #1d1d1f; color: #fff; }
 @media (max-width: 480px) {
-  .sitebar { padding: 0 12px; }
+  .sitebar { padding: 0 10px; }
   .sitebar .sb-home span { display: none; }
-  .sitebar .sb-links a { padding: 8px 10px; font-size: 13px; }
+  .sitebar .sb-links { gap: 2px; min-width: 0; overflow-x: auto; }
+  .sitebar .sb-links a { padding: 7px 9px; font-size: 12.5px; }
 }
