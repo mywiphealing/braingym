@@ -1,0 +1,252 @@
+<!-- For Education. Built into public/education/index.html inside the site's
+     header and footer by scripts/site-additions.js; edit here. -->
+<section class="whero">
+  <div class="whero__inner">
+    <div>
+      <span class="badge">For schools &amp; universities</span>
+      <h1>Healthy students, <em>thriving campuses.</em></h1>
+      <p>Students are carrying more than grades: pressure to perform, social media, stigma, and not knowing where to turn. We bring art therapy, psychoeducation and peer support onto campus, from primary pupils to foundation-year students, and show you what changed.</p>
+      <div class="btn-row">
+        <a class="wbtn wbtn--lime" href="/contact/">Bring this to your campus</a>
+        <a class="wbtn wbtn--ghost" href="#sample">See a sample dashboard</a>
+      </div>
+    </div>
+    <div class="frame">
+      <img src="/img/report/ucsi.webp" alt="Students in a lecture hall during a myWIPhealing art therapy session at UCSI" width="472" height="223">
+      <span class="tag tag--a">Safe space</span>
+      <span class="tag tag--b">Peer support</span>
+    </div>
+  </div>
+</section>
+
+<section class="ws ws--cream">
+  <div class="ws__inner">
+    <div class="ws__head">
+      <span class="eyebrow">What we bring</span>
+      <h2>Creative wellbeing, built for campus life.</h2>
+      <p>Culturally grounded, peer-led and professionally guided. No artistic skill required.</p>
+    </div>
+    <div class="g g-3">
+      <div class="pcard">
+        <img src="/img/report/worksheet-session.webp" alt="Students working on art therapy worksheets together" width="428" height="336" loading="lazy">
+        <div class="pcard__body">
+          <h3>Art therapy sessions</h3>
+          <p>Guided workshops on emotional regulation, mindfulness, body acceptance and self-worth, through visual art, music, movement and drama.</p>
+        </div>
+      </div>
+      <div class="pcard">
+        <img src="/img/report/group-artwork.webp" alt="SHIPS peers holding up artwork they created" width="547" height="294" loading="lazy">
+        <div class="pcard__body">
+          <h3>Peer-supporter training</h3>
+          <p>Our SHIPS programme trains students and staff to run art-based peer support, so care continues after we leave.</p>
+        </div>
+      </div>
+      <div class="pcard">
+        <img src="/img/report/outreach-pasar-seni.webp" alt="A large group at a myWIPhealing community outreach day" width="307" height="220" loading="lazy">
+        <div class="pcard__body">
+          <h3>Campus outreach days</h3>
+          <p>Awareness events and panels in the spirit of our Art of Healing festival, built around your students' wellbeing, inclusion or exam season.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ws ws--sage" id="sample">
+  <div class="ws__inner">
+    <div class="ws__head">
+      <span class="eyebrow">Sample dashboard</span>
+      <h2>What your dashboard could look like.</h2>
+      <p>Every campus we work with gets a live, anonymised dashboard. This sample is built from real sessions.</p>
+    </div>
+    <div class="notice">
+      <span aria-hidden="true">🧪</span>
+      <div><b>Sample data.</b> Eight real myWIPhealing sessions in Malaysian schools and universities (2022–2024), from our Social Impact Report. Your institution's dashboard shows only your own sessions, updated as students respond.</div>
+    </div>
+    <div style="text-align:center;margin-bottom:28px">
+      <div class="seg" role="group" aria-label="Show sessions from">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="university" aria-pressed="false">Universities</button>
+        <button type="button" data-filter="school" aria-pressed="false">Schools</button>
+      </div>
+    </div>
+
+    <div class="g g-4" id="kpis"></div>
+
+    <div class="g g-2" style="margin-top:20px">
+      <div class="wcard">
+        <h3>Students reached, by session</h3>
+        <div class="bars" id="attendance"></div>
+      </div>
+      <div class="wcard">
+        <h3>What students told us they struggle with</h3>
+        <div class="bars" id="themes"></div>
+        <div class="note">Number of sessions where each theme came up in facilitator notes.</div>
+      </div>
+    </div>
+
+    <div class="g g-2" style="margin-top:20px">
+      <div class="wcard">
+        <h3>How they felt, before and after</h3>
+        <div id="shift"></div>
+      </div>
+      <div class="wcard">
+        <h3>Activities used</h3>
+        <div class="chips" id="formats"></div>
+        <h3 style="margin-top:28px">Every campus report includes</h3>
+        <ul class="checks">
+          <li>Anonymised before-and-after wellbeing scores for each session</li>
+          <li>Themes students raise, so counsellors know where to focus</li>
+          <li>Attendance and engagement across the term</li>
+          <li>Student reflections, shared only with their consent</li>
+          <li>A printable one-page summary for your management or board</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ws ws--white">
+  <div class="ws__inner">
+    <div class="ws__head">
+      <span class="eyebrow">Where we've been</span>
+      <h2>Schools and universities we've worked with.</h2>
+    </div>
+    <div class="g g-2" id="cases"></div>
+  </div>
+</section>
+
+<section class="ws ws--forest">
+  <div class="ws__inner wcta">
+    <div>
+      <span class="eyebrow">Get started</span>
+      <h2>Bring creative healing to your campus.</h2>
+      <p>Tell us about your students and we'll suggest a programme: a single outreach session, a term of workshops, or peer-supporter training. Your dashboard is set up from day one.</p>
+    </div>
+    <div class="btn-row">
+      <a class="wbtn wbtn--lime" href="/contact/">Contact us</a>
+      <a class="wbtn wbtn--ghost" href="/community.html">See our live impact</a>
+    </div>
+  </div>
+</section>
+
+<script>
+// Sessions and insights from the myWIPhealing Social Impact Report (4 years).
+// "themes" are what the facilitators recorded students struggling with.
+// "photo" is a file in /img/report/, or null for a placeholder.
+const SESSIONS = [
+  { kind: "university", name: "UniKL", title: "UniKL Community Outreach", who: "Foundation students", n: 156, photo: "unikl",
+    format: "Emotional-expression worksheet", did: "Art therapy focused on emotional regulation and mindfulness.",
+    learned: "Students face stigma from peers and lack access to professional help.",
+    themes: ["Stigma", "Access to help"] },
+  { kind: "university", name: "UCSI", title: "UCSI Vietnam Student Exchange", who: "Exchange students from Vietnam", n: 107, photo: "ucsi",
+    format: "Art therapy in English class", did: "An English class combined with mindfulness and emotional-expression art.",
+    learned: "Students across countries share the same stigma and low awareness of mental health.",
+    themes: ["Stigma", "Low awareness"] },
+  { kind: "university", name: "Limkokwing", title: "IncluCity × Limkokwing", who: "Students and the NakSeni disability community", n: 20, photo: "limkokwing",
+    format: "Panel discussion", did: "A mental health sharing on bridging the inclusion gap through creativity.",
+    learned: "A wide gap remains between society and people with disabilities, from lack of education and accessibility.",
+    themes: ["Low awareness", "Access to help"] },
+  { kind: "school", name: "Sekolah Sukan Pahang", title: "Sekolah Sukan Pahang", who: "Pupils aged 7–17", n: 300, photo: "sekolah-sukan-pahang",
+    format: "Emotional-expression worksheet", did: "Emotional regulation, and channelling feelings into art and sport.",
+    learned: "Student athletes struggle with weak family connection and peer pressure.",
+    themes: ["Family connection", "Peer pressure"] },
+  { kind: "school", name: "SMK Dato Mohd Said", title: "SMK Dato Mohd Said, Nilai", who: "Form 4 & 5", n: 130, photo: "smk-dato-mohd-said",
+    format: "Body acceptance & self-love", did: "An art therapy session on body acceptance and practising self-love.",
+    learned: "Students are shaped by social media and a lack of family support.",
+    themes: ["Social media", "Family connection"] },
+  { kind: "school", name: "SBPI Gombak", title: "SBPI Gombak × Noble Dr", who: "Form 4 & 5", n: 115, photo: "sbpi-gombak",
+    format: "Emotional-expression worksheet", did: "Art therapy focused on emotional regulation and mindfulness.",
+    learned: "Students struggle with pressure to perform academically.",
+    themes: ["Academic pressure"] },
+  { kind: "school", name: "SMK Aminuddin Baki", title: "SMK Aminuddin Baki", who: "Form 4 & 5", n: 100, photo: "smk-aminuddin-baki",
+    format: "Mindfulness line art", did: "Mindful line art on noticing our thoughts and emotions.",
+    learned: "Social media trends, self-diagnosis and doom-scrolling shape how students cope.",
+    themes: ["Social media", "Unhealthy coping"] },
+  { kind: "school", name: "#beMindful, Green Factory", title: "#beMindful × Fariza, Green Factory", who: "Form 4 & 5", n: 15, photo: "bemindful-green-factory",
+    format: "Miniature wooden painting", did: "Miniature wooden painting as a way into emotional expression.",
+    learned: "With the right support and a safe space, students express their emotions creatively.",
+    themes: [] },
+];
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const n1 = (v) => (v === null || v === undefined ? "—" : v);
+
+const tile = (value, label, sub) => `<div class="tile"><b>${esc(value)}</b><span>${esc(label)}</span>${sub ? `<em>${esc(sub)}</em>` : ""}</div>`;
+const bar = (label, sub, value, max, text, before) => `<div class="bar">
+    <div class="bar__label">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ""}</div>
+    <div class="bar__track"><div class="bar__fill${before ? " bar__fill--before" : ""}" style="width:${Math.round((value / max) * 100)}%">${esc(text)}</div></div>
+  </div>`;
+
+function render(filter) {
+  const rows = SESSIONS.filter((s) => filter === "all" || s.kind === filter);
+  const total = rows.reduce((a, s) => a + s.n, 0);
+  const unis = rows.filter((s) => s.kind === "university").length;
+  const schools = rows.length - unis;
+
+  $("kpis").innerHTML = [
+    tile(total.toLocaleString(), "Students reached", "Across the sessions shown"),
+    tile(rows.length, "Sessions", `${unis} university · ${schools} school`),
+    tile(Math.round(total / rows.length), "Average group", "Students per session"),
+    { all: tile("7 → uni", "Ages", "Primary pupils to university"),
+      school: tile("7–17", "Ages", "Primary and secondary"),
+      university: tile("Tertiary", "Level", "Foundation and exchange students") }[filter],
+  ].join("");
+
+  const max = Math.max(...rows.map((s) => s.n));
+  $("attendance").innerHTML = [...rows].sort((a, b) => b.n - a.n)
+    .map((s) => bar(s.name, s.kind === "university" ? "University" : "School", s.n, max, s.n)).join("");
+
+  const counts = {};
+  for (const s of rows) for (const t of s.themes) counts[t] = (counts[t] || 0) + 1;
+  const themes = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const tMax = Math.max(1, ...themes.map((t) => t[1]));
+  $("themes").innerHTML = themes.length
+    ? themes.map(([t, c]) => bar(t, "", c, tMax, `${c} session${c > 1 ? "s" : ""}`)).join("")
+    : '<p>No themes recorded for these sessions.</p>';
+
+  const formats = {};
+  for (const s of rows) formats[s.format] = (formats[s.format] || 0) + 1;
+  $("formats").innerHTML = Object.entries(formats).sort((a, b) => b[1] - a[1])
+    .map(([f, c]) => `<span class="chip">${esc(f)}${c > 1 ? ` <b>×${c}</b>` : ""}</span>`).join("");
+
+  $("cases").innerHTML = rows.map((s) => `
+    <div class="pcard">
+      ${s.photo
+        ? `<img src="/img/report/${s.photo}.webp" alt="myWIPhealing session at ${esc(s.title)}" loading="lazy">`
+        : `<div class="ph">Photo coming soon</div>`}
+      <div class="pcard__body">
+        <span class="pill${s.kind === "school" ? " pill--school" : ""}">${s.kind === "university" ? "University" : "School"}</span>
+        <h3>${esc(s.title)}</h3>
+        <p class="meta">${esc(s.who)} · ${s.n} participants</p>
+        <p>${esc(s.did)}</p>
+        <p class="learned"><b>What we learned:</b> ${esc(s.learned)}</p>
+      </div>
+    </div>`).join("");
+}
+
+// Before/after: the sessions above predate the survey, so this card shows the
+// live anonymised scores from our community sessions instead.
+async function loadShift() {
+  let s = null;
+  try {
+    const res = await fetch("/api/public/community");
+    if (res.ok) s = (await res.json()).stats;
+  } catch { /* falls through to the explainer */ }
+  const pair = (title, before, after) => `<div class="bar-group"><p class="bar-group__title">${esc(title)}</p><div class="bars">
+      ${bar("Before", "", before || 0, 5, n1(before), true)}${bar("After", "", after || 0, 5, n1(after))}</div></div>`;
+  $("shift").innerHTML = s && s.total
+    ? pair("Sense of self-worth (1–5)", s.preWorth, s.postWorth) +
+      pair("Mind state (1–5) · before = heaviness, after = calm", s.preHeavy, s.postPeace) +
+      `<div class="note">Live, anonymised scores from our community sessions (n=${s.total}). On your dashboard this shows your students only.</div>`
+    : `<p>Each student rates how they feel before and after the session in a short chat survey. Scores appear here, anonymised, as responses come in.</p>`;
+}
+
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  render(b.dataset.filter);
+}));
+render("all");
+loadShift();
+</script>

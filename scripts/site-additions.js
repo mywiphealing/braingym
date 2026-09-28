@@ -5,6 +5,8 @@
 //     links to the policy pages and the team login, which nothing linked to
 //   - homepage: the community dashboard + survey sections after the hero
 //     (scripts/home-sections.html)
+//   - this repo's own pages (scripts/pages/*.html) built inside a mirrored
+//     page's header and footer, so they look like the rest of the site
 //
 //   node scripts/site-additions.js
 //
@@ -41,6 +43,16 @@ const GENERIC_TEXT = [
   ['data-kb-block="kb-adv-heading5648_bbe33b-1f">lives impacted by SHIPS</div>', 'data-kb-block="kb-adv-heading5648_bbe33b-1f">of lives touched by SHIPS</div>'],
   ['data-kb-block="kb-adv-heading5648_c9458c-bd">300+</div>', 'data-kb-block="kb-adv-heading5648_c9458c-bd">Hundreds</div>'],
   ['data-kb-block="kb-adv-heading5648_6328a3-64">sessions delivered</div>', 'data-kb-block="kb-adv-heading5648_6328a3-64">of sessions delivered</div>'],
+];
+
+// This repo's own pages. Each fragment in scripts/pages/ becomes the <main> of
+// a copy of SHELL_FROM, styled by public/wip-site.css.
+const SHELL_FROM = "contact/index.html";
+const OWN_PAGES = [
+  { src: "education.html", out: "education/index.html", href: "/education/", title: "For Schools & Universities",
+    description: "Creative, peer-led mental health programmes for Malaysian schools and universities, with an anonymised impact dashboard for every campus." },
+  { src: "community.html", out: "community.html", href: "/community.html", title: "Our Impact",
+    description: "A live, anonymised picture of how people feel before and after myWIPhealing sessions." },
 ];
 
 const FOOTER_LEGAL = [
@@ -168,13 +180,42 @@ function wordpressPages(dir = PUBLIC, out = []) {
   return out;
 }
 
+function buildOwnPage(shell, page) {
+  const frag = fs.readFileSync(path.join(__dirname, "pages", page.src), "utf8").trim();
+  const html = shell
+    .replace(/<title>[^<]*<\/title>/, `<title>${page.title} | myWIPhealing</title>`)
+    .replace(/<link rel="canonical" href="[^"]*" \/>/, `<link rel="canonical" href="${page.href}" />`)
+    .replace(/(<meta property="og:title" content=")[^"]*/, `$1${page.title}`)
+    .replace(/(<meta property="og:url" content=")[^"]*/, `$1${page.href}`)
+    .replace(/(<meta name="twitter:title" content=")[^"]*/, `$1${page.title}`)
+    .replace(/<script type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/g, "")
+    .replace("</head>", `<meta name="description" content="${page.description}">\n<link rel="stylesheet" href="/wip-site.css">\n</head>`)
+    .replace(/(<body class="[^"]*)\bpage-id-\d+/, "$1wip-own-page")
+    .replace(/ current-menu-item| current_page_item/g, "")
+    .split(`<li class="wp-block-kadence-navigation-link menu-item wip-nav-item"><div class="kb-link-wrap"><a class="kb-nav-link-content" href="${page.href}">`)
+    .join(`<li class="wp-block-kadence-navigation-link menu-item wip-nav-item current-menu-item"><div class="kb-link-wrap"><a class="kb-nav-link-content" href="${page.href}" aria-current="page">`);
+  const a = html.indexOf('<main id="inner-wrap"');
+  const b = html.indexOf("</main>", a);
+  if (a === -1 || b === -1) throw new Error(`${SHELL_FROM} has no <main id="inner-wrap">`);
+  return html.slice(0, a) + `<main id="inner-wrap" class="wip-page" role="main">\n${frag}\n</main>` + html.slice(b + 7);
+}
+
 function run() {
   const home = path.join(PUBLIC, "index.html");
-  for (const file of wordpressPages()) {
+  const own = OWN_PAGES.map((p) => path.join(PUBLIC, p.out));
+  for (const file of wordpressPages().filter((f) => !own.includes(f))) {
     const [html, missed] = addToPage(fs.readFileSync(file, "utf8"), { home: file === home });
     fs.writeFileSync(file, html);
     const rel = path.relative(PUBLIC, file).replace(/\\/g, "/");
     console.log(missed.length ? `${rel}: could not add ${missed.join(", ")}` : `${rel}: ok`);
+  }
+  // After the loop, so the shell already carries this run's menu and footer.
+  const shell = fs.readFileSync(path.join(PUBLIC, SHELL_FROM), "utf8");
+  for (const page of OWN_PAGES) {
+    const out = path.join(PUBLIC, page.out);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, buildOwnPage(shell, page));
+    console.log(`${page.out}: built from scripts/pages/${page.src}`);
   }
 }
 

@@ -1,0 +1,192 @@
+<!-- Our Impact (community dashboard). Built into public/community.html inside
+     the site's header and footer by scripts/site-additions.js; edit here. -->
+<section class="whero whero--coral">
+  <div class="whero__inner">
+    <div>
+      <span class="badge" id="periodBadge">Live community dashboard</span>
+      <h1>Our impact, <em>in their own words.</em></h1>
+      <p>A live, anonymised picture of how people feel before and after our Seni Scape and Harmoni Circle sessions: shifts in wellbeing, what participants value, and testimonials shared with their consent.</p>
+      <div class="btn-row">
+        <a class="wbtn wbtn--lime" href="/bot/">Add your voice</a>
+        <a class="wbtn wbtn--ghost" href="#numbers">See the numbers</a>
+      </div>
+    </div>
+    <div class="frame">
+      <img src="/img/report/group-artwork.webp" alt="Participants holding up the artwork they made in a myWIPhealing session" width="547" height="294">
+      <span class="tag tag--a">Before &amp; after</span>
+      <span class="tag tag--b">Private by design</span>
+    </div>
+  </div>
+</section>
+
+<section class="ws ws--cream" id="numbers">
+  <div class="ws__inner">
+    <div class="ws__head">
+      <span class="eyebrow">Community health</span>
+      <h2>How our sessions land.</h2>
+      <p>Self-reported by participants in a short chat survey after each session. Aggregated and anonymised; never names or contact details.</p>
+    </div>
+    <div class="g g-4" id="hero"></div>
+  </div>
+</section>
+
+<section class="ws ws--sage">
+  <div class="ws__inner">
+    <div class="ws__head">
+      <span class="eyebrow">The shift</span>
+      <h2>How people feel, arriving and leaving.</h2>
+    </div>
+    <div class="g g-3">
+      <div class="wcard"><h3>The shift, in their own scores</h3><div id="shift"></div></div>
+      <div class="wcard"><h3>How the session felt</h3><div id="landing"></div></div>
+      <div class="wcard"><h3>Programme effectiveness</h3><div id="effectiveness"></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ws ws--white">
+  <div class="ws__inner">
+    <div class="ws__head">
+      <span class="eyebrow">In their own words</span>
+      <h2>What participants carry away.</h2>
+    </div>
+    <div class="wcard" style="margin-bottom:24px"><div class="cloud" id="words"></div></div>
+    <div id="quotes"></div>
+    <div class="g g-4" id="totals" style="margin-top:24px"></div>
+  </div>
+</section>
+
+<section class="ws ws--cream">
+  <div class="ws__inner">
+    <div class="ws__head">
+      <span class="eyebrow">Since 2021</span>
+      <h2>Four years of creative healing.</h2>
+      <p>Festivals, school visits, disability-inclusive sessions and healing in nature, across Malaysia.</p>
+    </div>
+    <div class="strip">
+      <img src="/img/report/pwd-janda-baik.webp" alt="SHIPS peers and MRDS participants after an art therapy session in Janda Baik" loading="lazy">
+      <img src="/img/report/glow-painting.webp" alt="Glow-in-the-dark painting from a mindfulness art session" loading="lazy">
+      <img src="/img/report/healing-in-nature.webp" alt="A group outdoors during a healing in nature day" loading="lazy">
+      <img src="/img/report/art-circle-night.webp" alt="Participants making art together in an evening circle" loading="lazy">
+    </div>
+  </div>
+</section>
+
+<section class="ws ws--forest">
+  <div class="ws__inner wcta">
+    <div>
+      <span class="eyebrow">Impact survey</span>
+      <h2>Joined a session? Add your voice to the data.</h2>
+      <p>A short chat with Seni, our friendly survey guide, in English or Bahasa Melayu. Every answer helps show what creative healing really does.</p>
+    </div>
+    <div class="btn-row">
+      <a class="wbtn wbtn--lime" href="/bot/">Take the impact survey</a>
+      <a class="wbtn wbtn--ghost" href="/education/">For schools &amp; universities</a>
+    </div>
+  </div>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const n1 = (v) => (v === null || v === undefined ? "—" : v);
+
+function tile(label, value, unit, context, pending) {
+  return `<div class="tile${pending ? " is-pending" : ""}">
+    <b>${esc(n1(value))}${unit && value !== null && value !== undefined ? `<small>${esc(unit)}</small>` : ""}</b>
+    <span>${esc(label)}</span><em>${esc(pending ? "Available once enough people have answered" : context || "")}</em></div>`;
+}
+
+const bar = (label, value, max, text, before) => `<div class="bar">
+    <div class="bar__label">${esc(label)}</div>
+    <div class="bar__track"><div class="bar__fill${before ? " bar__fill--before" : ""}" style="width:${max ? Math.round((value / max) * 100) : 0}%">${esc(text)}</div></div>
+  </div>`;
+
+function barPair(title, before, after, max) {
+  return `<div class="bar-group"><p class="bar-group__title">${esc(title)}</p><div class="bars">
+    ${bar("Before", before || 0, max, n1(before), true)}${bar("After", after || 0, max, n1(after))}</div></div>`;
+}
+
+function wordClass(count, max) {
+  const r = max ? count / max : 0;
+  if (r > 0.75) return "s4";
+  if (r > 0.5) return "s3";
+  if (r > 0.25) return "s2";
+  return "s1";
+}
+
+async function load() {
+  let d;
+  try {
+    const res = await fetch("/api/public/community");
+    d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Failed to load");
+  } catch (e) {
+    $("hero").innerHTML = `<div class="wcard" style="grid-column:1/-1"><p>The live numbers couldn't load right now. Please try again in a moment.</p></div>`;
+    return;
+  }
+  const s = d.stats, site = d.site || {};
+
+  $("periodBadge").textContent = `${s.total} responses · updated live`;
+
+  const sent = s.sentiment || {};
+  const sentTotal = (sent.positive || 0) + (sent.mixed || 0) + (sent.negative || 0);
+  const posPct = sentTotal ? Math.round((sent.positive / sentTotal) * 100) : null;
+  const npsMissing = s.nps === null || s.nps === undefined;
+
+  $("hero").innerHTML = [
+    tile("Community Wellbeing Index", s.wellbeingIndex10, "/10", "Mean of post-session wellbeing scales"),
+    tile("Positive sessions", posPct, "%", "Share of responses read as positive"),
+    tile("Net Promoter Score", npsMissing ? null : Math.round(s.nps), "", s.npsCount ? `Would recommend, 0–10 · n=${s.npsCount}` : "", npsMissing),
+    tile("Survey responses", s.total, "", "All-time submissions"),
+  ].join("");
+
+  $("shift").innerHTML = s.total
+    ? barPair("Sense of self-worth (1–5)", s.preWorth, s.postWorth, 5) +
+      barPair("Mind state (1–5) · before = heaviness, after = calm", s.preHeavy, s.postPeace, 5) +
+      `<div class="note">Matched single-session pre/post scores. Self-reported.</div>`
+    : `<p>No responses yet.</p>`;
+
+  const booth = s.booth || {};
+  const boothOrder = ["A", "B", "C", "D", "E"];
+  const boothMax = Math.max(1, ...boothOrder.map((k) => booth[k] || 0));
+  const boothLabels = { A: "Loved it", B: "Enjoyed", C: "Okay", D: "Not much", E: "Didn't enjoy" };
+  const boothRows = boothOrder.filter((k) => booth[k]).map((k) => bar(boothLabels[k], booth[k], boothMax, booth[k])).join("");
+  $("landing").innerHTML = (boothRows ? `<div class="bars">${boothRows}</div>` : "<p>No session ratings yet.</p>") +
+    `<div class="note">${sent.positive || 0} positive · ${sent.mixed || 0} mixed · ${sent.negative || 0} negative (AI-read sentiment)</div>`;
+
+  const effDist = s.effectivenessDist || {};
+  const effOrder = [5, 4, 3, 2, 1];
+  const effLabels = { 1: "Not effective", 2: "Slightly", 3: "Moderately", 4: "Very", 5: "Extremely" };
+  const effMax = Math.max(1, ...effOrder.map((k) => effDist[k] || 0));
+  $("effectiveness").innerHTML = (s.effectivenessCount || 0) >= 3
+    ? `<div class="bars">${effOrder.filter((k) => effDist[k]).map((k) => bar(effLabels[k], effDist[k], effMax, effDist[k])).join("")}</div>
+       <div class="note">Mean effectiveness: ${n1(s.effectiveness)} / 5 · n=${s.effectivenessCount}</div>`
+    : `<p>This lights up once three or more participants rate the programme.</p>`;
+
+  const words = s.words || [];
+  const wMax = words.length ? words[0].count : 0;
+  $("words").innerHTML = words.length
+    ? words.map((w) => `<span class="${wordClass(w.count, wMax)}">${esc(w.text)}</span>`).join("")
+    : "<p>Words appear here as participants share how they feel.</p>";
+
+  const quotes = s.testimonials || [];
+  $("quotes").innerHTML = quotes.length
+    ? `<div class="g g-2">` + quotes.slice(0, 4).map((q) => `
+        <figure class="quote" style="margin:0"><div class="quote__mark">&ldquo;</div>
+          <p>${esc(q.text)}</p><cite>${esc(q.author)}</cite></figure>`).join("") + `</div>`
+    : "";
+
+  // Organisation totals come from config; only the ones that are set show.
+  const totals = [
+    { v: site.hoursDelivered, l: "Hours of creative healing delivered" },
+    { v: site.communities, l: "Communities engaged" },
+    { v: site.organisations, l: "Organisations partnered" },
+    { v: site.peopleReached, l: `People reached${site.sinceYear ? " since " + site.sinceYear : ""}` },
+  ].filter((t) => t.v);
+  $("totals").innerHTML = totals.map((t) => `<div class="tile"><b>${esc(t.v)}</b><span>${esc(t.l)}</span></div>`).join("");
+  $("totals").style.display = totals.length ? "" : "none";
+}
+
+load();
+</script>
