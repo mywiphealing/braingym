@@ -1621,6 +1621,11 @@ async function notifyStatusChange(record, previous, announce) {
     if (tellHost && d.createdBy && d.createdBy.email && (!host || notify.wants(host, "listing"))) {
       const revision = record.status === "needs_revision" ? d.revision : null;
       await notify.send(notify.listingStatus(d.createdBy.email, d.createdBy.name, d, record.status, adminNote(record), { revision }));
+    } else if (tellHost) {
+      // Say why in the logs, so a missing email can be traced from Vercel.
+      console.log(`No "${record.status}" email for "${d.title}": ${!d.createdBy || !d.createdBy.email
+        ? "the proposal has no member account (submitted before logins)"
+        : "the host turned off emails about their proposals"}`);
     }
     if (announce) {
       await notify.sendMany(

@@ -53,6 +53,9 @@ async function post(path, payload, timeoutMs = 8000) {
   }
 }
 
+// For the logs: enough of an address to tell who it went to, not the whole thing.
+const maskEmail = (to) => String(to).replace(/^(.{2})[^@]*/, "$1…");
+
 // One email: { to, subject, html, text }. Resolves true when Resend took it.
 async function send(msg) {
   if (!msg || !msg.to) return false;
@@ -61,7 +64,9 @@ async function send(msg) {
     return false;
   }
   try {
-    return await post("/emails", { from: FROM, ...msg });
+    await post("/emails", { from: FROM, ...msg });
+    console.log(`Email sent: "${msg.subject}" to ${maskEmail(msg.to)}`);
+    return true;
   } catch (e) {
     console.error(`Email "${msg.subject}" failed:`, e.message);
     return false;
@@ -83,6 +88,7 @@ async function sendMany(msgs) {
     try {
       await post("/emails/batch", chunk.map((m) => ({ from: FROM, ...m })), 15000);
       sent.push(...chunk);
+      console.log(`Emails sent: ${chunk.length} × "${chunk[0].subject}"`);
     } catch (e) {
       console.error(`Email batch "${chunk[0].subject}" failed:`, e.message);
     }

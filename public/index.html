@@ -2,6 +2,16 @@
 <html lang="en-US" class="no-js" itemtype="https://schema.org/WebPage" itemscope>
 <head>
 	<meta charset="UTF-8">
+	<script>
+	// Supabase sends sign-in and password-reset links back to its Site URL (this
+	// page) when the link's own return address isn't on its Redirect URLs list.
+	// Hand them on to the member page, which knows what to do with them.
+	(function () {
+		var h = location.hash;
+		if (!/(^#|&)(access_token|error_code|type)=/.test(h)) return;
+		location.replace("/circle/" + (/(^#|&)type=recovery(&|$)/.test(h) ? "?reset=1" : "") + h);
+	})();
+	</script>
 	<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 	<title>myWIPhealing | Lifestyle-based creative wellness</title>
 

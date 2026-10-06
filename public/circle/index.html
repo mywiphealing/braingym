@@ -1201,6 +1201,12 @@ async function boot() {
     history.replaceState(null, "", RETURN_TO);
     return setMode("forgot", RESET_EXPIRED);
   }
+  // Any other email link that failed (expired, or opened twice). Without the
+  // ?reset=1 marker we can't tell a reset link from a confirmation link.
+  if (linkError && !session) {
+    history.replaceState(null, "", RETURN_TO);
+    return setMode("signin", "That email link has expired or was already used. Sign in below, or tap \"Forgot password?\" for a new reset link.");
+  }
   if ($("gate").dataset.mode === "reset") return;
   if (recovering) return session ? setMode("reset") : setMode("forgot", RESET_EXPIRED);
   if (session) await enter(); else setMode("signin");
