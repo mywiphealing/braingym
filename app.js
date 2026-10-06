@@ -1534,8 +1534,8 @@ app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) 
     if (announce) record.data.announcedAt = new Date().toISOString();
 
     await storage.updateEvent(index, record);
-    if (previous !== target) await notifyStatusChange(record, previous, announce);
-    res.json({ ok: true, status: record.status });
+    const email = previous !== target ? await notifyStatusChange(record, previous, announce) : null;
+    res.json({ ok: true, status: record.status, email });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1600,8 +1600,8 @@ app.post("/api/admin/harmoni/events/:id/request-changes", requireAdmin, async (r
     // Kept inside data: the Supabase mirror only stores the fixed columns.
     data.revision = { requestedAt: record.decidedAt, note: note || null, changes, flags };
     await storage.updateEvent(index, record);
-    if (previous !== "needs_revision" || changes.length || flags.length) await notifyStatusChange(record, previous, false);
-    res.json({ ok: true, status: record.status, changes: changes.length, flags: flags.length });
+    const email = previous !== "needs_revision" || changes.length || flags.length ? await notifyStatusChange(record, previous, false) : null;
+    res.json({ ok: true, status: record.status, changes: changes.length, flags: flags.length, email });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -1609,10 +1609,12 @@ app.post("/api/admin/harmoni/events/:id/request-changes", requireAdmin, async (r
 
 // Emails for an admin status change, sent after the change is saved. The
 // proposer hears about the outcomes that matter to them; members who opted in
-// hear about a newly live Circle.
+// hear about a newly live Circle. Resolves to what happened to the host's
+// email ({ sent, to, error } or { skipped }), for the admin page to show.
 const LISTING_EMAILS = new Set(["approved", "needs_revision", "rejected", "cancelled"]);
 
 async function notifyStatusChange(record, previous, announce) {
+  let email = null;
   try {
     const d = record.data || {};
     const members = await storage.loadMembers();
@@ -1622,12 +1624,14 @@ async function notifyStatusChange(record, previous, announce) {
     // Pre-account proposals have no member record, so no settings to respect.
     if (tellHost && d.createdBy && d.createdBy.email && (!host || notify.wants(host, "listing"))) {
       const revision = record.status === "needs_revision" ? d.revision : null;
-      await notify.send(notify.listingStatus(d.createdBy.email, d.createdBy.name, d, record.status, adminNote(record), { revision }));
+      email = await notify.sendReport(notify.listingStatus(d.createdBy.email, d.createdBy.name, d, record.status, adminNote(record), { revision }));
     } else if (tellHost) {
       // Say why in the logs, so a missing email can be traced from Vercel.
-      console.log(`No "${record.status}" email for "${d.title}": ${!d.createdBy || !d.createdBy.email
+      const why = !d.createdBy || !d.createdBy.email
         ? "the proposal has no member account (submitted before logins)"
-        : "the host turned off emails about their proposals"}`);
+        : "the host turned off emails about their proposals";
+      console.log(`No "${record.status}" email for "${d.title}": ${why}`);
+      email = { sent: false, skipped: why };
     }
     if (announce) {
       await notify.sendMany(
@@ -1638,7 +1642,9 @@ async function notifyStatusChange(record, previous, announce) {
     }
   } catch (e) {
     console.error("Status emails failed:", e.message);
+    email = { sent: false, error: e.message };
   }
+  return email;
 }
 
 // ---------- WIP Harmoni Circle: daily reminders (Vercel Cron) ----------

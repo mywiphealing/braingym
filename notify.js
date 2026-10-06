@@ -58,18 +58,25 @@ const maskEmail = (to) => String(to).replace(/^(.{2})[^@]*/, "$1…");
 
 // One email: { to, subject, html, text }. Resolves true when Resend took it.
 async function send(msg) {
-  if (!msg || !msg.to) return false;
+  return (await sendReport(msg)).sent;
+}
+
+// The same, reporting what happened: { sent, to, error }, so an admin action
+// can say on screen whether its email went out.
+async function sendReport(msg) {
+  if (!msg || !msg.to) return { sent: false, error: "No email address" };
+  const to = maskEmail(msg.to);
   if (!enabled) {
     console.log(`Email skipped (RESEND_API_KEY not set): "${msg.subject}"`);
-    return false;
+    return { sent: false, to, error: "RESEND_API_KEY is not set on this deployment" };
   }
   try {
     await post("/emails", { from: FROM, ...msg });
-    console.log(`Email sent: "${msg.subject}" to ${maskEmail(msg.to)}`);
-    return true;
+    console.log(`Email sent: "${msg.subject}" to ${to}`);
+    return { sent: true, to };
   } catch (e) {
     console.error(`Email "${msg.subject}" failed:`, e.message);
-    return false;
+    return { sent: false, to, error: e.name === "AbortError" ? "Resend didn't answer in time" : e.message };
   }
 }
 
@@ -326,6 +333,7 @@ function surveyInvite(member, d, surveyUrl) {
 
 module.exports = {
   enabled,
+  sendReport,
   SITE_URL,
   CIRCLE_URL,
   NOTIFY_KEYS,
