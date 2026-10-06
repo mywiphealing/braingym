@@ -33,6 +33,14 @@ approved.
    - *(optional, Harmoni Circle)* `HARMONI_FACILITATOR_SHARE` — facilitator's fixed share of
      projected profit, percent 0–100 (default 60; WIP's share covers the program system,
      SHIPS peer framework and art-therapy psychology education module)
+   - *(Harmoni Circle emails)* `RESEND_API_KEY` — Resend API key for member emails. Unset, no
+     email is sent (each one is logged and skipped); nothing else changes. The sending domain
+     (`mywiphealing.com`) must be verified in Resend.
+   - *(optional)* `NOTIFY_FROM` — sender, default `WIP Healing <hello@mywiphealing.com>`
+   - *(optional)* `SITE_URL` — base for links in emails, default `https://www.mywiphealing.com`
+     (emails link to `$SITE_URL/circle/`)
+   - `CRON_SECRET` — secret Vercel Cron sends as `Authorization: Bearer …` to the daily
+     reminder job. Unset, `/api/cron/reminders` refuses to run. See "Member emails" below.
    - *(optional, Community totals)* `STAT_PEOPLE_REACHED`, `STAT_HOURS_DELIVERED`,
      `STAT_COMMUNITIES`, `STAT_ORGANISATIONS`, `STAT_SINCE_YEAR` — org-confirmed totals.
      Left unset, the Community dashboard shows an honest "set in config" placeholder
@@ -115,7 +123,9 @@ cached 60s).
   `upcoming`, `proposed`, `hosted`) and the `joined` / `proposals` lists behind them.
   Joined = RSVP'd going with a seat (not waitlisted) on a live or completed Circle; hosted =
   their own proposal that went live and has taken place.
-- `POST /api/member/me` — member auth. Profile: any of `{ name, roles, state, city, photo }`.
+- `POST /api/member/me` — member auth. Profile: any of `{ name, roles, state, city, photo, notify }`.
+  `notify` is `{ rsvp, listing, newEvents, reminders }`, booleans only (any subset); all default
+  to on and come back in the profile as `member.notify`.
   `roles` ⊂ fighter / caregiver / practitioner (Mental health fighter, Caregiver, Practitioner);
   `state` is a Malaysian state/FT or "Outside Malaysia"; `photo` is a JPG/PNG/WebP data URL
   (the page square-crops it to 400px) or `null` to remove. Name + a role + a state make the
@@ -140,8 +150,13 @@ cached 60s).
   up to 3 image/PDF attachments ≤ ~1MB each) and computes the financial snapshot itself —
   projected revenue, cost, profit, and the fixed facilitator/WIP split. Status starts at
   `under_review`.
-  The proposer's account is recorded as `data.createdBy`. Optional `coverImage` (PNG/JPG/WebP/GIF
+  The proposer's account is recorded as `data.createdBy` and gets a "Submitted, in review" email. Optional `coverImage` (PNG/JPG/WebP/GIF
   data URL, ≤ ~1MB; the form shrinks photos first) becomes the event cover once approved.
+- `GET /api/harmoni/events/:id/edit` / `PUT /api/harmoni/events/:id` — member auth, proposer
+  only (`data.createdBy.id`), and only while the proposal is `needs_revision`. `GET` returns the
+  stored answers plus the admin's note; `PUT` takes the same body as a new proposal, validates it
+  the same way, keeps RSVPs/comments/payment link, and puts it back to `under_review`. The page's
+  "Edit & resubmit" button in My Circles uses these.
 - `POST /api/harmoni/events/:id/rsvp` — member auth. `{ status: going|maybe, pax }`; the name
   comes from the account. One RSVP per member (a new one replaces it); `going` is capped at
   capacity with overflow flagged waitlisted. `DELETE` withdraws it. On a paid Circle, `going`
@@ -155,7 +170,30 @@ cached 60s).
 - `POST /api/admin/harmoni/events/:id/rsvp` — admin auth. `{ key, action: paid|unpaid|remove }`,
   where `key` is the RSVP's member id (or `name:<name>` for pre-account RSVPs).
 - `GET /api/admin/harmoni/events` / `POST /api/admin/harmoni/events/:id/status` — admin auth.
-  Review queue: list everything, then approve / reject / complete / cancel with an optional note.
+  Review queue: list everything, then approve / request changes / reject / complete / cancel.
+  Statuses: `under_review`, `needs_revision` ("To revise": the admin's note says what to change
+  and the host can edit and resubmit), `approved`, `rejected`, `completed`, `cancelled`.
+- `GET /api/cron/reminders` — `Authorization: Bearer $CRON_SECRET`. The daily reminder job (see
+  "Member emails").
+
+### Member emails
+
+Sent through Resend's HTTP API (`notify.js`) after the change is saved; a failed or skipped
+email never fails the member's request. Each member chooses which they get under "Email
+notifications" in their profile (`data.notify`, all on by default):
+
+- **RSVPs** (`rsvp`) — going / maybe / waitlisted confirmation with seats, date and time
+  (Malaysia time), venue, and the payment link when a confirmed seat is payment pending. A short
+  note when they withdraw.
+- **My proposals** (`listing`) — to the proposer: submitted / resubmitted (in review), live,
+  to revise (with the admin's note), not approved, cancelled. Only when the status actually
+  changes; a re-open after "completed" sends nothing.
+- **New Circles** (`newEvents`) — to every opted-in member except the host, the first time a
+  Circle goes live (`data.announcedAt` stops repeats).
+- **Reminders** (`reminders`) — Vercel Cron calls `/api/cron/reminders` daily at 01:00 UTC
+  (9am in Malaysia; `crons` in `vercel.json`). Members with a seat (going, not waitlisted) at a
+  live Circle starting in the next 48 hours get one reminder; `data.remindersSent` records who,
+  so re-runs never send twice.
 
 Events and member profiles live in the same dual-store setup as responses (Redis or local
 `data/*.json` primary, Supabase mirror) under separate `events` / `members` keys, and

@@ -222,6 +222,7 @@
   .myrow .note { display: block; font-size: .8rem; color: var(--muted-strong); font-style: italic; margin-top: 2px; }
   .status { font-size: .74rem; font-weight: 700; border: 1.3px solid var(--ink); border-radius: var(--radius-pill); padding: 3px 10px; white-space: nowrap; background: var(--white); }
   .status.under_review { background: #FFF1C2; }
+  .status.needs_revision { background: var(--banana-pastel); }
   .status.approved, .status.going { background: var(--mint); }
   .status.completed, .status.attended { background: var(--lavender); }
   .status.rejected, .status.cancelled { background: var(--pink); }
@@ -271,6 +272,12 @@
   .profsum .loc { font-size: .9rem; color: var(--muted-strong); margin-top: 6px; }
   .profsum .missing { font-size: .86rem; color: #B3361A; font-weight: 600; margin-top: 6px; }
   .profcard-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .notif { display: grid; gap: 8px; }
+  .notif label { display: flex; gap: 12px; align-items: flex-start; border: 1.5px solid var(--field); border-radius: 14px; padding: 10px 14px; cursor: pointer; line-height: 1.45; }
+  .notif label:has(input:checked) { border-color: var(--ink); background: var(--mint); }
+  .notif input { margin-top: 2px; }
+  .notif b { display: block; font-size: .95rem; }
+  .notif small { display: block; color: var(--muted-strong); font-size: .84rem; }
   .profcard .who { font-size: .86rem; color: var(--muted-strong); margin-top: 14px; }
 
   /* ── RSVP state ── */
@@ -1057,7 +1064,7 @@ async function showMe() {
 }
 
 const STATUS_LABEL = {
-  under_review: "In review", approved: "Live", completed: "Hosted", rejected: "Not approved", cancelled: "Cancelled",
+  under_review: "In review", needs_revision: "To revise", approved: "Live", completed: "Hosted", rejected: "Not approved", cancelled: "Cancelled",
 };
 
 function myRow(item, pill, pillClass, extra = "") {
@@ -1097,7 +1104,8 @@ function renderMe() {
         p.status === "approved" && p.past ? "Hosted" : STATUS_LABEL[p.status] || p.status,
         p.status === "approved" && p.past ? "completed" : p.status,
         (p.status === "approved" || p.status === "completed" ? `<span class="note">${p.goingCount} ${p.past ? "attended" : "going"}</span>` : "") +
-        (p.adminNote ? `<span class="note">WIP team: ${esc(p.adminNote)}</span>` : ""))).join("")
+        (p.adminNote ? `<span class="note">WIP team: ${esc(p.adminNote)}</span>` : "") +
+        (p.status === "needs_revision" ? `<span class="note"><button type="button" class="linkbtn" onclick="editProposal('${esc(p.id)}')">Edit &amp; resubmit →</button></span>` : ""))).join("")
     : `<div class="emptyline">You haven't proposed a Circle yet. <a href="#" onclick="showForm();return false">Design one →</a></div>`;
 
   const past = activity.joined.filter((j) => j.past && j.rsvp === "going" && !j.waitlisted);
@@ -1121,6 +1129,13 @@ const ROLE_HELP = {
   practitioner: "You work in mental health, therapy, counselling or wellbeing.",
 };
 
+const NOTIFY_CHOICES = [
+  ["rsvp", "My RSVPs", "A confirmation when you RSVP or withdraw, with the payment link if there is one."],
+  ["reminders", "Reminders", "A nudge a day or two before a Circle you're going to."],
+  ["newEvents", "New Circles", "When a new Circle opens for RSVPs."],
+  ["listing", "My proposals", "Updates on Circles you've proposed: in review, live, or changes requested."],
+];
+
 let P = null;               // profile answers in progress
 let profileOnboarding = false;
 const laterKey = () => "harmoniProfileLater:" + (ME ? ME.member.id : "");
@@ -1133,7 +1148,7 @@ function avatarInner(name, photo) {
 function showProfile(onboarding) {
   profileOnboarding = onboarding;
   const m = ME.member;
-  P = { name: m.name || "", roles: [...m.roles], state: m.state || "", city: m.city || "", photo: undefined, preview: m.photo };
+  P = { name: m.name || "", roles: [...m.roles], state: m.state || "", city: m.city || "", photo: undefined, preview: m.photo, notify: { ...m.notify } };
   $("profEyebrow").textContent = onboarding ? "Welcome to the Circle" : "Your profile";
   $("profIntro").textContent = onboarding
     ? "A few quick things so the circle can get to know you. It takes about a minute, and you can change it any time."
@@ -1193,12 +1208,22 @@ function renderProfile() {
         </label>
       </div>
       <div class="qerr" id="perr_loc" role="alert"></div>
+    </div>
+
+    <div class="q" id="pq_notify">
+      <span class="qlabel">Email notifications</span>
+      <p class="qhelp">We'll email ${esc(ME.member.email || "you")}. Untick anything you'd rather not get.</p>
+      <div class="notif">
+        ${NOTIFY_CHOICES.map(([key, label, help]) => `<label><input type="checkbox" data-notify="${key}" ${P.notify[key] !== false ? "checked" : ""}>
+          <span><b>${esc(label)}</b><small>${esc(help)}</small></span></label>`).join("")}
+      </div>
     </div>`;
 
   $("p_name").addEventListener("input", (e) => { P.name = e.target.value; clearProfErr("name"); });
   $("p_state").addEventListener("change", (e) => { P.state = e.target.value; clearProfErr("loc"); });
   $("p_city").addEventListener("input", (e) => { P.city = e.target.value; });
   $("p_photo").addEventListener("change", (e) => pickPhoto(e.target.files[0]));
+  $("profBody").querySelectorAll("[data-notify]").forEach((c) => c.addEventListener("change", () => { P.notify[c.dataset.notify] = c.checked; }));
   $("profBody").querySelectorAll("[data-role]").forEach((b) => b.addEventListener("click", () => {
     const k = b.dataset.role;
     P.roles = P.roles.includes(k) ? P.roles.filter((r) => r !== k) : [...P.roles, k];
@@ -1261,7 +1286,7 @@ async function saveProfile() {
     $("pq_" + problems[0][0]).scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
-  const body = { name: P.name, roles: P.roles, state: P.state, city: P.city };
+  const body = { name: P.name, roles: P.roles, state: P.state, city: P.city, notify: P.notify };
   if (P.photo !== undefined) body.photo = P.photo;
   $("profSave").disabled = true;
   $("profSave").textContent = "Saving…";
@@ -1786,6 +1811,7 @@ const REVIEW = STEPS.length + 1; // step number of the "check & send" screen
 const WHO = { host: "Host", circle: "WIP", participants: "Participants" };
 
 let F = null;          // answers in progress
+let EDIT = null;       // { id, note } while revising a proposal the WIP team sent back
 let wizStep = 0;       // 0 = "before you start", 1..STEPS.length, REVIEW
 let resumeStep = 0;    // where a saved draft left off
 const UNDO = {};       // one level of undo per question after a draft/example fills it
@@ -1806,7 +1832,7 @@ function blankAnswers() {
 
 // ----- saving on this device -----
 
-const draftKey = () => "harmoniDraft:" + (ME ? ME.member.id : "anon");
+const draftKey = () => "harmoniDraft:" + (ME ? ME.member.id : "anon") + (EDIT ? ":edit:" + EDIT.id : "");
 
 function loadDraft() {
   try { return JSON.parse(localStorage.getItem(draftKey()) || "null"); } catch { return null; }
@@ -1838,7 +1864,7 @@ function saveForLater() {
   try { localStorage.setItem(draftKey(), JSON.stringify({ F, step: wizStep, at: Date.now() })); } catch {}
   showHub().then(() => {
     $("eventList").insertAdjacentHTML("beforebegin",
-      `<div class="youre" id="laterNote" style="margin-bottom:16px"><span>✓ Your proposal is saved on this device. Pick it up any time from "Propose a Circle".</span></div>`);
+      `<div class="youre" id="laterNote" style="margin-bottom:16px"><span>✓ Your proposal is saved on this device. Pick it up any time from ${EDIT ? '"Edit &amp; resubmit" in My Circles' : '"Propose a Circle"'}.</span></div>`);
     setTimeout(() => { const n = $("laterNote"); if (n) n.remove(); }, 8000);
   });
 }
@@ -1846,6 +1872,7 @@ function saveForLater() {
 // ----- opening the form -----
 
 function showForm() {
+  EDIT = null;
   const saved = loadDraft();
   F = { ...blankAnswers(), ...(saved ? saved.F : {}) };
   if (!F.contactName && ME) F.contactName = ME.member.name;
@@ -1855,6 +1882,52 @@ function showForm() {
   wizStep = 0;
   show("formview");
   renderWizard();
+}
+
+// Revising a proposal sent back with "needs_revision": the stored answers
+// (or this device's unsent edits to them) go back into the same form.
+async function editProposal(id) {
+  let d;
+  try {
+    d = await api(`/api/harmoni/events/${encodeURIComponent(id)}/edit`);
+  } catch (e) { return alert(e.message); }
+  EDIT = { id, note: d.adminNote };
+  const saved = loadDraft();
+  F = saved ? { ...blankAnswers(), ...saved.F } : answersFromProposal(d.proposal);
+  resumeStep = saved && saved.step > 0 ? Math.min(saved.step, REVIEW) : 0;
+  wizStep = 0;
+  show("formview");
+  renderWizard();
+}
+
+// The server's stored proposal back into form answers: numbered lines into
+// lists, the ISO date into the datetime-local format, numbers into text.
+function answersFromProposal(p) {
+  const unline = (s, prefix) => String(s || "").split("\n").map((l) => l.replace(prefix, "").trim()).filter(Boolean);
+  const atLeast = (arr, n) => arr.concat(Array(Math.max(0, n - arr.length)).fill(""));
+  const str = (v) => (v === null || v === undefined ? "" : String(v));
+  const t = new Date(p.dateTime);
+  const local = isNaN(t) ? "" : new Date(t - t.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const F0 = blankAnswers();
+  return {
+    ...F0,
+    title: p.title || "", coverId: (p.cover && p.cover.id) || F0.coverId, coverImage: p.coverImage || null,
+    sessionType: p.sessionType || "", audience: p.audience || "", dateTime: local, duration: p.duration || "",
+    coreActivity: p.coreActivity || "", flow: atLeast(unline(p.flow, /^Step \d+:\s*/), 3), reference: p.reference || "",
+    attachments: Array.isArray(p.attachments) ? p.attachments : [],
+    venueMode: p.venueMode || "physical", venueName: p.venueName || "", venueAddress: p.venueAddress || "",
+    venueNotes: p.venueNotes || "", minCapacity: str(p.minCapacity), capacity: str(p.capacity), prep: p.prep || "",
+    takeaway: p.takeaway || "", intention: p.intention || "",
+    theme: p.theme || "", themeExplain: p.themeExplain || "", keyMessage: p.keyMessage || "",
+    costs: Array.isArray(p.costs) && p.costs.length ? p.costs.map((c) => ({ item: c.item, who: c.who, rm: str(c.rm) })) : F0.costs,
+    costPerParticipant: str(p.costPerParticipant), ticketPrice: str(p.ticketPrice), projectedAttendees: str(p.projectedAttendees),
+    opening: p.opening || "", instructions: atLeast(unline(p.instructions, /^\d+\.\s*/), 3), closing: p.closing || "",
+    prompts: atLeast(unline(p.prompts, /^Prompt \d+:\s*/), 2),
+    help: p.help || "", accessibility: p.accessibility || "", other: p.other || "",
+    contactName: p.contactName || F0.contactName, contactEmail: p.contactEmail || F0.contactEmail,
+    // Asked again on purpose: the plan has changed since they last agreed.
+    safeguarding: false,
+  };
 }
 
 function startOver() {
@@ -1887,6 +1960,17 @@ function renderWizard() {
 }
 
 function introHTML() {
+  if (EDIT) return `<div class="wiz-head">
+      <span class="eyebrow"><i></i> Changes requested</span>
+      <h1 id="wizH" tabindex="-1" style="margin-top:12px">Revise your <span class="swash">Circle<svg viewBox="0 0 200 24" preserveAspectRatio="none" aria-hidden="true"><use href="#d-swash"/></svg></span></h1>
+      <p>Your answers are filled in. Change what's needed, then send it back for review.</p>
+    </div>
+    <div class="q">
+      ${EDIT.note ? `<div class="hostnote">What the WIP team asked: ${esc(EDIT.note)}</div>` : ""}
+      <div class="resume">
+        <button type="button" class="btn btn-ink btn-pop" onclick="wizGoto(${resumeStep || REVIEW})">${resumeStep ? "Continue where you left off →" : "Go to my answers →"}</button>
+      </div>
+    </div>`;
   return `<div class="wiz-head">
       <span class="eyebrow"><i></i> Host a Harmoni Circle</span>
       <h1 id="wizH" tabindex="-1" style="margin-top:12px">Propose your <span class="swash">Circle<svg viewBox="0 0 200 24" preserveAspectRatio="none" aria-hidden="true"><use href="#d-swash"/></svg></span></h1>
@@ -2217,8 +2301,13 @@ async function submitProposal() {
   $("wizNext").disabled = true;
   $("wizNext").textContent = "Sending…";
   try {
-    await api("/api/harmoni/events", { method: "POST", body: JSON.stringify(payloadFromAnswers()) });
+    if (EDIT) {
+      await api(`/api/harmoni/events/${encodeURIComponent(EDIT.id)}`, { method: "PUT", body: JSON.stringify(payloadFromAnswers()) });
+    } else {
+      await api("/api/harmoni/events", { method: "POST", body: JSON.stringify(payloadFromAnswers()) });
+    }
     clearDraft();
+    EDIT = null;
     F = null;
     show("done");
   } catch (e) {

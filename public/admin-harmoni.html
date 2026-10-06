@@ -107,6 +107,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;
 const fmtRM = (n) => "RM " + Number(n || 0).toLocaleString("en-MY", { maximumFractionDigits: 2 });
 const STATUS_TAG = {
   under_review: '<span class="tag flag">under review</span>',
+  needs_revision: '<span class="tag flag">to revise</span>',
   approved: '<span class="tag pos">approved</span>',
   rejected: '<span class="tag neg">rejected</span>',
   completed: '<span class="tag">completed</span>',
@@ -169,6 +170,11 @@ function proposalCard(ev) {
   const actions = [];
   if (ev.status === "under_review") {
     actions.push(`<button class="btn btn-banana btn-sm" onclick="setStatus('${esc(ev.id)}','approved')">Approve & publish</button>`);
+    actions.push(`<button class="btn btn-outline btn-sm" onclick="setStatus('${esc(ev.id)}','needs_revision')">Request changes…</button>`);
+    actions.push(`<button class="btn btn-outline btn-sm" onclick="setStatus('${esc(ev.id)}','rejected')">Reject…</button>`);
+  }
+  if (ev.status === "needs_revision") {
+    actions.push(`<button class="btn btn-banana btn-sm" onclick="setStatus('${esc(ev.id)}','approved')">Approve as is</button>`);
     actions.push(`<button class="btn btn-outline btn-sm" onclick="setStatus('${esc(ev.id)}','rejected')">Reject…</button>`);
   }
   if (ev.status === "approved") {
@@ -295,6 +301,7 @@ function proposalCard(ev) {
 function render(events) {
   const groups = [
     ["under_review", "Needs review", "proposals waiting for your decision"],
+    ["needs_revision", "Waiting on the host", "changes requested; the host can edit and resubmit"],
     ["approved", "Live on the member hub", "members can RSVP to these now"],
     ["completed", "Completed", "wrapped up Circles"],
     ["rejected", "Rejected", ""],
@@ -355,8 +362,13 @@ async function loadMembers() {
 
 async function setStatus(id, status) {
   let note;
+  if (status === "needs_revision") {
+    note = prompt("What should the host change? They'll see this in My Circles and in their email:", "");
+    if (note === null) return;
+    if (!note.trim()) return alert("Add a note so the host knows what to change.");
+  }
   if (status === "rejected" || status === "cancelled") {
-    note = prompt("Optional note (shown to admin, stored on the proposal):", "");
+    note = prompt("Optional note for the host (shown in My Circles and in their email):", "");
     if (note === null) return;
   }
   try {

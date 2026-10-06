@@ -5,6 +5,7 @@ const storage = require("./storage");
 const supabase = require("./supabase");
 const stats = require("./stats");
 const survey = require("./survey");
+const notify = require("./notify");
 
 const app = express();
 // 6mb (not the old 1mb): Harmoni Circle proposals carry up to 3 small
@@ -810,6 +811,8 @@ const memberProfile = (m) => {
     state: d.state || "",
     city: d.city || "",
     photo: photoUrl(m),
+    // Which emails they get: { rsvp, listing, newEvents, reminders }.
+    notify: notify.prefs(m),
     // Name, at least one role and a location. The photo stays optional.
     profileComplete: Boolean(m.name && roles.length && d.state),
   };
@@ -899,8 +902,8 @@ app.get("/api/member/me", requireMember, async (req, res) => {
   }
 });
 
-// Profile editing: any of { name, roles, state, city, photo } (photo null
-// removes it). Email and sign-in method belong to Supabase Auth. Roles and
+// Profile editing: any of { name, roles, state, city, photo, notify } (photo
+// null removes it; notify is { rsvp, listing, newEvents, reminders } booleans). Email and sign-in method belong to Supabase Auth. Roles and
 // location are only ever shown to the member and admins; name and photo are
 // what other members see.
 app.post("/api/member/me", requireMember, async (req, res) => {
@@ -926,6 +929,16 @@ app.post("/api/member/me", requireMember, async (req, res) => {
         if (f.data.length > 400_000) throw new Error("That photo is too large. Try another one.");
         d.photo = { key: crypto.randomUUID(), type: f.type, data: f.data };
       }
+    }
+    if (b.notify !== undefined) {
+      if (!b.notify || typeof b.notify !== "object") throw new Error("Email settings must be a list of on/off choices");
+      const next = { ...notify.prefs(m) };
+      for (const k of notify.NOTIFY_KEYS) {
+        if (b.notify[k] === undefined) continue;
+        if (typeof b.notify[k] !== "boolean") throw new Error("Email settings must be on or off");
+        next[k] = b.notify[k];
+      }
+      d.notify = next;
     }
     d.profileUpdatedAt = new Date().toISOString();
     await storage.updateMember(req.memberIndex, m);
@@ -988,6 +1001,60 @@ app.post("/api/harmoni/events", requireMember, async (req, res) => {
       decidedBy: null,
     };
     await storage.appendEvent(record);
+    if (notify.wants(req.member, "listing")) {
+      await notify.send(notify.listingStatus(data.createdBy.email, req.member.name, data, "under_review"));
+    }
+    res.json({ ok: true, id: record.id });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// The proposer's own proposal, in full, so they can revise it when the WIP
+// team asks for changes (status needs_revision).
+const REVISABLE = new Set(["needs_revision"]);
+const ownedBy = (ev, memberId) => Boolean(ev && ev.data && ev.data.createdBy && ev.data.createdBy.id === memberId);
+
+app.get("/api/harmoni/events/:id/edit", requireMember, async (req, res) => {
+  try {
+    const events = await storage.loadEvents();
+    const ev = events.find((e) => e.id === req.params.id);
+    if (!ownedBy(ev, req.member.id)) return res.status(404).json({ error: "Proposal not found" });
+    if (!REVISABLE.has(ev.status)) return res.status(400).json({ error: "This proposal can't be edited right now" });
+    const { rsvps, comments, financials, createdBy, paymentUrl, announcedAt, remindersSent, resubmittedAt, ...proposal } = ev.data;
+    res.json({ proposal, adminNote: adminNote(ev) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Resubmit a revised proposal: same validation as a new one, then it goes
+// back into the review queue. Bookkeeping the member can't set (who proposed
+// it, RSVPs, comments, payment link) carries over from the stored record.
+app.put("/api/harmoni/events/:id", requireMember, async (req, res) => {
+  try {
+    const events = await storage.loadEvents();
+    const index = events.findIndex((e) => e.id === req.params.id);
+    const record = events[index];
+    if (!ownedBy(record, req.member.id)) return res.status(404).json({ error: "Proposal not found" });
+    if (!REVISABLE.has(record.status)) return res.status(400).json({ error: "This proposal can't be edited right now" });
+
+    const old = record.data;
+    const data = buildProposal(req.body || {});
+    data.createdBy = old.createdBy;
+    data.rsvps = Array.isArray(old.rsvps) ? old.rsvps : [];
+    data.comments = Array.isArray(old.comments) ? old.comments : [];
+    for (const k of ["paymentUrl", "announcedAt", "remindersSent"]) if (old[k]) data[k] = old[k];
+    data.resubmittedAt = new Date().toISOString();
+    record.data = data;
+    record.status = "under_review";
+
+    await storage.updateEvent(index, record);
+    if (notify.wants(req.member, "listing")) {
+      await notify.send(
+        notify.listingStatus(data.createdBy.email, req.member.name, data, "under_review", null, { resubmitted: true })
+      );
+    }
     res.json({ ok: true, id: record.id });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1030,7 +1097,7 @@ app.post("/api/harmoni/events/:id/rsvp", requireMember, async (req, res) => {
     if (status === "going" && needsPayment(d)) {
       paymentStatus = previous && previous.paymentStatus === "paid" && previous.pax >= pax ? "paid" : "pending";
     }
-    d.rsvps.push({
+    const rsvp = {
       memberId: req.member.id,
       name: req.member.name,
       status,
@@ -1038,11 +1105,16 @@ app.post("/api/harmoni/events/:id/rsvp", requireMember, async (req, res) => {
       waitlisted,
       paymentStatus,
       at: new Date().toISOString(),
-    });
+    };
+    d.rsvps.push(rsvp);
 
     await storage.updateEvent(index, record);
     // Waitlisted people don't pay until a seat is theirs.
-    res.json({ ok: true, waitlisted, paymentUrl: paymentStatus === "pending" && !waitlisted ? d.paymentUrl : null });
+    const paymentUrl = paymentStatus === "pending" && !waitlisted ? d.paymentUrl : null;
+    if (notify.wants(req.member, "rsvp")) {
+      await notify.send(notify.rsvpConfirmation(req.member, d, rsvp, paymentUrl));
+    }
+    res.json({ ok: true, waitlisted, paymentUrl });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -1160,7 +1232,10 @@ app.delete("/api/harmoni/events/:id/rsvp", requireMember, async (req, res) => {
     const d = record.data;
     const before = Array.isArray(d.rsvps) ? d.rsvps.length : 0;
     d.rsvps = (d.rsvps || []).filter((r) => !byMember(req.member.id)(r));
-    if (d.rsvps.length !== before) await storage.updateEvent(index, record);
+    if (d.rsvps.length !== before) {
+      await storage.updateEvent(index, record);
+      if (notify.wants(req.member, "rsvp")) await notify.send(notify.rsvpWithdrawn(req.member, d));
+    }
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1268,7 +1343,7 @@ app.get("/api/admin/harmoni/members", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) => {
-  const VALID = new Set(["under_review", "approved", "rejected", "completed", "cancelled"]);
+  const VALID = new Set(["under_review", "needs_revision", "approved", "rejected", "completed", "cancelled"]);
   const target = req.body && req.body.status;
   if (!VALID.has(target)) {
     return res.status(400).json({ error: "Invalid status" });
@@ -1279,6 +1354,7 @@ app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) 
     if (index < 0) return res.status(404).json({ error: "Event not found" });
 
     const record = events[index];
+    const previous = record.status;
     record.status = target;
     record.decidedAt = new Date().toISOString();
     record.decidedBy = "admin";
@@ -1286,10 +1362,99 @@ app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) 
     if (typeof req.body.note === "string") {
       record.adminNote = req.body.note.trim().slice(0, 300) || null;
     }
+    // A Circle is announced to members once, the first time it goes live, so
+    // a re-open after "completed" or a trip back through review doesn't
+    // announce it again.
+    const announce = target === "approved" && !record.data.announcedAt && new Date(record.data.dateTime) > new Date();
+    if (announce) record.data.announcedAt = new Date().toISOString();
 
     await storage.updateEvent(index, record);
+    if (previous !== target) await notifyStatusChange(record, previous, announce);
     res.json({ ok: true, status: record.status });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Emails for an admin status change, sent after the change is saved. The
+// proposer hears about the outcomes that matter to them; members who opted in
+// hear about a newly live Circle.
+const LISTING_EMAILS = new Set(["approved", "needs_revision", "rejected", "cancelled"]);
+
+async function notifyStatusChange(record, previous, announce) {
+  try {
+    const d = record.data || {};
+    const members = await storage.loadMembers();
+    const host = d.createdBy && members.find((m) => m.id === d.createdBy.id);
+    // A re-open after "completed" isn't news to the host.
+    const tellHost = LISTING_EMAILS.has(record.status) && !(record.status === "approved" && previous === "completed");
+    // Pre-account proposals have no member record, so no settings to respect.
+    if (tellHost && d.createdBy && d.createdBy.email && (!host || notify.wants(host, "listing"))) {
+      await notify.send(notify.listingStatus(d.createdBy.email, d.createdBy.name, d, record.status, adminNote(record)));
+    }
+    if (announce) {
+      await notify.sendMany(
+        members
+          .filter((m) => m.id !== (d.createdBy && d.createdBy.id) && notify.wants(m, "newEvents"))
+          .map((m) => notify.newCircle(m, d))
+      );
+    }
+  } catch (e) {
+    console.error("Status emails failed:", e.message);
+  }
+}
+
+// ---------- WIP Harmoni Circle: daily reminders (Vercel Cron) ----------
+
+// Vercel calls this once a day (vercel.json "crons") with
+// `Authorization: Bearer $CRON_SECRET`. Members with a seat ("going", not
+// waitlisted) at a live Circle starting within the next 48 hours get one
+// reminder; data.remindersSent records who has had theirs, so a re-run or a
+// second day inside the window sends nothing twice.
+const REMINDER_WINDOW_MS = 48 * 3600_000;
+
+function cronAuthorized(req) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const hash = (s) => crypto.createHash("sha256").update(String(s)).digest();
+  return crypto.timingSafeEqual(hash(req.headers.authorization || ""), hash(`Bearer ${secret}`));
+}
+
+app.get("/api/cron/reminders", async (req, res) => {
+  if (!process.env.CRON_SECRET) return res.status(503).json({ error: "CRON_SECRET is not set" });
+  if (!cronAuthorized(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const [events, members] = await Promise.all([storage.loadEvents(), storage.loadMembers()]);
+    const byId = new Map(members.map((m) => [m.id, m]));
+    const now = Date.now();
+    const report = [];
+    for (let index = 0; index < events.length; index++) {
+      const record = events[index];
+      const d = record.data || {};
+      const start = new Date(d.dateTime).getTime();
+      if (record.status !== "approved" || !(start > now && start - now <= REMINDER_WINDOW_MS)) continue;
+
+      const already = d.remindersSent || {};
+      const due = (Array.isArray(d.rsvps) ? d.rsvps : [])
+        .filter((r) => r.status === "going" && !r.waitlisted && r.memberId && !already[r.memberId])
+        .map((r) => ({ r, m: byId.get(r.memberId) }))
+        .filter(({ m }) => notify.wants(m, "reminders"));
+      if (!due.length) continue;
+
+      const msgs = due.map(({ r, m }) => ({ ...notify.reminder(m, d, r), memberId: m.id }));
+      const sent = await notify.sendMany(msgs.map(({ memberId, ...msg }) => msg));
+      const sentTo = new Set(sent.map((s) => s.to));
+      const at = new Date().toISOString();
+      const reached = msgs.filter((msg) => sentTo.has(msg.to)).map((msg) => msg.memberId);
+      if (reached.length) {
+        d.remindersSent = { ...already, ...Object.fromEntries(reached.map((id) => [id, at])) };
+        await storage.updateEvent(index, record);
+      }
+      report.push({ id: record.id, due: due.length, sent: reached.length });
+    }
+    res.json({ ok: true, events: report });
+  } catch (e) {
+    console.error("Reminder run failed:", e.message);
     res.status(500).json({ error: e.message });
   }
 });
