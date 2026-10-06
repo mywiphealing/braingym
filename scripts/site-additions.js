@@ -7,6 +7,8 @@
 //     and the team login, which nothing linked to
 //   - homepage: the community dashboard + survey sections after the hero
 //     (scripts/home-sections.html)
+//   - /the-art-of-healing-2026/: the festival details after the hero
+//     (scripts/art-of-healing-2026.html), replacing WordPress's Canva embed
 //
 //   node scripts/site-additions.js
 //
@@ -17,7 +19,21 @@ const fs = require("fs");
 const path = require("path");
 
 const PUBLIC = path.join(__dirname, "..", "public");
-const HOME_SECTIONS = path.join(__dirname, "home-sections.html");
+
+// Sections injected after a page's hero, keyed by path under public/. `drop`
+// removes the WordPress row whose markup matches it (the content the section
+// replaces); `description` replaces the page's meta descriptions.
+const PAGE_SECTIONS = {
+  "index.html": { name: "home-sections", file: "home-sections.html" },
+  "the-art-of-healing-2026/index.html": {
+    name: "aoh-2026",
+    file: "art-of-healing-2026.html",
+    drop: /canva\.com\/design\//,
+    description:
+      "The Art of Healing '26 #back2roots: Saturday 10 October 2026, 11am-5pm at Mika Coffee Roaster, Ara Damansara. " +
+      "Free entry: community weaving art, mental health coffee talk, congkak, ASWARA performance and open mic.",
+  },
+};
 
 // Pages the site owns but WordPress's menus do not list. Linked from the
 // footer (and the homepage sections), not the header.
@@ -78,7 +94,7 @@ function navItems() {
 }
 
 // Returns [html, list of additions that could not be placed].
-function addToPage(html, { home }) {
+function addToPage(html, { sections }) {
   const missed = [];
   html = strip(html);
 
@@ -120,17 +136,28 @@ function addToPage(html, { home }) {
     html = html.replace(copy, (m) => m + wrap("footer-legal", `<p class="wip-footer-legal" style="margin-top:6px;font-size:14px">${links}</p>`));
   }
 
-  if (home) {
+  if (sections) {
     // The hero is the first Kadence row inside the page content.
     const content = html.indexOf('<div class="entry-content');
     const hero = content === -1 ? -1 : html.indexOf('<div class="kb-row-layout-wrap', content);
-    if (hero === -1) missed.push("homepage hero");
+    if (hero === -1) missed.push(`${sections.name} (no hero)`);
     else {
+      if (sections.drop) {
+        // Removes WordPress markup in place (not marker-wrapped), so re-runs
+        // find nothing to do. Never the hero itself.
+        const m = sections.drop.exec(html.slice(hero));
+        const row = m ? html.lastIndexOf('<div class="kb-row-layout-wrap', hero + m.index) : -1;
+        if (row > hero) html = html.slice(0, row) + html.slice(closingDivEnd(html, row)).replace(/^\n+/, "");
+      }
       const at = closingDivEnd(html, hero);
-      const block = wrap("home-sections", "\n" + fs.readFileSync(HOME_SECTIONS, "utf8").trim() + "\n");
+      const block = wrap(sections.name, "\n" + fs.readFileSync(path.join(__dirname, sections.file), "utf8").trim() + "\n");
       // No newline after the block: strip() removes the one that follows it,
       // so adding one here would grow the page by a blank line per run.
       html = html.slice(0, at) + "\n" + block + html.slice(at);
+    }
+    if (sections.description) {
+      const d = sections.description.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+      html = html.replace(/(<meta (?:name|property)="(?:description|og:description|twitter:description)" content=")[^"]*"/g, `$1${d}"`);
     }
   }
   return [html, missed];
@@ -151,11 +178,10 @@ function wordpressPages(dir = PUBLIC, out = []) {
 }
 
 function run() {
-  const home = path.join(PUBLIC, "index.html");
   for (const file of wordpressPages()) {
-    const [html, missed] = addToPage(fs.readFileSync(file, "utf8"), { home: file === home });
-    fs.writeFileSync(file, html);
     const rel = path.relative(PUBLIC, file).replace(/\\/g, "/");
+    const [html, missed] = addToPage(fs.readFileSync(file, "utf8"), { sections: PAGE_SECTIONS[rel] });
+    fs.writeFileSync(file, html);
     console.log(missed.length ? `${rel}: could not add ${missed.join(", ")}` : `${rel}: ok`);
   }
 }

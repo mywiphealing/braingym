@@ -75,7 +75,10 @@ WordPress knows nothing about this repo's own pages, so `scripts/site-additions.
 automatically at the end of a mirror) adds them to every mirrored page: "Our Impact"
 (`/community.html`) and "Impact Survey" (`/bot/`) in the header menu and footer, footer links to
 the privacy policy, SHIPS terms and team login, and the homepage sections in
-`scripts/home-sections.html`. Edit those there, then run `node scripts/site-additions.js`; never
+`scripts/home-sections.html`. The Art of Healing '26 festival details on
+`/the-art-of-healing-2026/` (schedule, activities, panel, partners) live in
+`scripts/art-of-healing-2026.html` and replace WordPress's Canva embed on that page; photos are in
+`public/img/art-of-healing-2026/`. Edit those there, then run `node scripts/site-additions.js`; never
 edit the mirrored HTML by hand, as the next mirror overwrites it. The survey and community
 pages link back to the site through the bar at their top (`public/sitebar.css`).
 
