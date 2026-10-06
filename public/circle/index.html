@@ -323,6 +323,9 @@
   .revlist .was { color: var(--muted, #6e6e73); text-decoration: line-through; }
   .revlist .linkbtn { white-space: nowrap; }
   .revh { font-size: 1rem; margin: 14px 0 0; }
+  .revtitle { font-size: 1.25rem; margin: 0 0 4px; }
+  .revlbl { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; margin-bottom: 2px; }
+  .q.revsum { border-width: 2px; }
   .hostnote { background: var(--banana-pastel); border: 1.5px solid var(--ink); border-radius: 16px; padding: 10px 14px; font-weight: 600; font-size: .9rem; margin-bottom: 12px; }
 
   /* ── Fields ── */
@@ -1325,6 +1328,7 @@ function renderMe() {
         p.status === "approved" && p.past ? "completed" : p.status,
         (p.status === "approved" || p.status === "completed" ? `<span class="note">${p.goingCount} ${p.past ? "attended" : "going"}</span>` : "") +
         (p.adminNote ? `<span class="note">WIP team: ${esc(p.adminNote)}</span>` : "") +
+        (p.status === "needs_revision" && p.toRevise ? `<span class="note">${p.toRevise} thing${p.toRevise === 1 ? "" : "s"} to revise</span>` : "") +
         (p.status === "needs_revision" ? `<span class="note"><button type="button" class="linkbtn" onclick="editProposal('${esc(p.id)}')">Review changes &amp; resubmit →</button></span>` : ""))).join("")
     : `<div class="emptyline">You haven't proposed a Circle yet. <a href="#" onclick="showForm();return false">Design one →</a></div>`;
 
@@ -2182,7 +2186,7 @@ function renderWizard() {
   $("wizFill").style.width = `${Math.round((Math.min(wizStep, total + 1) / (total + 1)) * 100)}%`;
   $("wizBack").disabled = wizStep === 0;
   $("wizLater").style.visibility = wizStep === 0 ? "hidden" : "visible";
-  $("wizNext").innerHTML = wizStep === 0 ? (resumeStep ? "Start from the beginning →" : "Let's start →")
+  $("wizNext").innerHTML = wizStep === 0 ? (resumeStep ? "Start from the beginning →" : EDIT ? "Start revising →" : "Let's start →")
     : wizStep === total ? "Check my answers →"
     : wizStep === REVIEW ? "Send for review 🌱" : "Next →";
   if (wizStep === STEPS.findIndex((s) => s.after) + 1) computeFin();
@@ -2194,8 +2198,7 @@ function introHTML() {
       <h1 id="wizH" tabindex="-1" style="margin-top:12px">Revise your <span class="swash">Circle<svg viewBox="0 0 200 24" preserveAspectRatio="none" aria-hidden="true"><use href="#d-swash"/></svg></span></h1>
       <p>Your answers are filled in, with the WIP team's edits already made. Check their edits, update anything they flagged, then send it back. Sending it back means you're happy with the edits.</p>
     </div>
-    <div class="q">
-      ${EDIT.note ? `<div class="hostnote">What the WIP team asked: ${esc(EDIT.note)}</div>` : ""}
+    <div class="q revsum">
       ${revisionListHTML()}
       <div class="resume">
         <button type="button" class="btn btn-ink btn-pop" onclick="wizGoto(${resumeStep || REVIEW})">${resumeStep ? "Continue where you left off →" : "Go to my answers →"}</button>
@@ -2237,12 +2240,21 @@ function revShow(field, v) {
   return String(v);
 }
 
+// The summary at the top of a revision: the WIP team's message, what they
+// want the host to rework, and what they already changed. Older requests
+// (before field-by-field requests) only have the message.
 function revisionListHTML() {
-  const r = EDIT && EDIT.revision;
-  if (!r) return "";
+  const r = (EDIT && EDIT.revision) || {};
+  const note = r.note || (EDIT && EDIT.note) || "";
   const go = (field) => `<button type="button" class="linkbtn" onclick="wizGoto(${stepOfField(field)})">Go to it →</button>`;
   const flags = r.flags || [], changes = r.changes || [];
-  return `${flags.length ? `<h3 class="revh">Please update (${flags.length})</h3>
+  const count = flags.length + changes.length;
+  return `<h2 class="revtitle">📝 Here's what you need to revise</h2>
+    <p class="qhelp">${count
+      ? `${count} thing${count === 1 ? "" : "s"} from the WIP team. Tap <strong>Go to it →</strong> to jump straight to each one.`
+      : note ? "The WIP team's message is below." : "The WIP team didn't list anything specific. Check your answers, or reply to their email if you're unsure."}</p>
+    ${note ? `<div class="hostnote"><span class="revlbl">Message from the WIP team</span>${esc(note)}</div>` : ""}
+    ${flags.length ? `<h3 class="revh">Please update (${flags.length})</h3>
       <ul class="revlist">${flags.map((f) => `<li class="flag"><span><strong>${esc(f.label)}</strong>${f.note ? `<br>${esc(f.note)}` : ""}</span>${go(f.field)}</li>`).join("")}</ul>` : ""}
     ${changes.length ? `<h3 class="revh">Edited for you by the WIP team (${changes.length})</h3>
       <ul class="revlist">${changes.map((c) => `<li class="edit"><span><strong>${esc(c.label)}</strong><br>

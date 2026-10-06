@@ -750,7 +750,9 @@ function memberActivity(events, memberId, surveyed = new Set()) {
       const going = (Array.isArray(d.rsvps) ? d.rsvps : [])
         .filter((r) => r.status === "going" && !r.waitlisted)
         .reduce((s, r) => s + r.pax, 0);
-      proposals.push({ ...card, submittedAt: ev.submittedAt, goingCount: going, adminNote: adminNote(ev) });
+      const rev = ev.status === "needs_revision" && d.revision ? d.revision : null;
+      const toRevise = rev ? (rev.flags || []).length + (rev.changes || []).length : 0;
+      proposals.push({ ...card, submittedAt: ev.submittedAt, goingCount: going, adminNote: adminNote(ev), toRevise });
     }
 
     const r = live && (Array.isArray(d.rsvps) ? d.rsvps : []).find(byMember(memberId));
