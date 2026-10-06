@@ -12,8 +12,20 @@ const API_KEY = (process.env.RESEND_API_KEY || "").trim();
 // A Resend key is one token like "re_AbC123…". Anything else (a pasted code
 // sample, quotes, "Bearer …") would only fail later with a confusing error.
 const KEY_PROBLEM = API_KEY && !/^re_[A-Za-z0-9_-]+$/.test(API_KEY)
-  ? "RESEND_API_KEY doesn't look like a Resend key. In Vercel it should be only the key, one line starting with re_ (no quotes, spaces or code)"
+  ? "RESEND_API_KEY doesn't look like a Resend key. In Vercel it should be only the key, one line starting with re_ (no quotes, spaces or code). "
+    + keyHint(API_KEY)
   : null;
+
+// What's wrong with a bad key, without giving the key away.
+function keyHint(k) {
+  const found = [];
+  if (/["'`]/.test(k)) found.push("it contains quotes");
+  if (/\s/.test(k)) found.push("it contains spaces or line breaks");
+  if (/^bearer/i.test(k)) found.push('it starts with "Bearer"');
+  else if (!k.includes("re_")) found.push(`it starts with "${k.slice(0, 6).replace(/[^\x20-\x7e]/g, "?")}…" and has no "re_" in it`);
+  else if (!k.startsWith("re_")) found.push('there is something before the "re_"');
+  return `The current value is ${k.length} characters long${found.length ? "; " + found.join(", ") : ""}.`;
+}
 const FROM = process.env.NOTIFY_FROM || "WIP Healing <hello@mywiphealing.com>";
 // The www host is the one Supabase Auth redirects back to (see README).
 const SITE_URL = (process.env.SITE_URL || "https://www.mywiphealing.com").replace(/\/+$/, "");
