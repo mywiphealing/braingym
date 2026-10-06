@@ -100,6 +100,8 @@
     .nav-propose .long { display: none; }
     .nav-propose .short { display: inline; }
   }
+  /* The hidden attribute must win over any display rule (e.g. .pwform's grid). */
+  [hidden] { display: none !important; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   /* ── Headline + swash (as on the survey page) ── */
@@ -274,6 +276,7 @@
   .profsum .loc { font-size: .9rem; color: var(--muted-strong); margin-top: 6px; }
   .profsum .missing { font-size: .86rem; color: #B3361A; font-weight: 600; margin-top: 6px; }
   .profcard-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  @media (max-width: 480px) { .profcard-actions .btn { flex: 1 1 auto; justify-content: center; } }
   .notif { display: grid; gap: 8px; }
   .notif label { display: flex; gap: 12px; align-items: flex-start; border: 1.5px solid var(--field); border-radius: 14px; padding: 10px 14px; cursor: pointer; line-height: 1.45; }
   .notif label:has(input:checked) { border-color: var(--ink); background: var(--mint); }
@@ -852,8 +855,8 @@
     <div id="meProfile"></div>
     <div class="who" id="meWho"></div>
     <div class="profcard-actions">
-      <button class="btn btn-ink btn-sm" onclick="showProfile(false)">Edit profile</button>
-      <button class="btn btn-line btn-sm" onclick="togglePwForm()">Change password</button>
+      <button class="btn btn-line btn-sm" onclick="showProfile(false)">Edit profile</button>
+      <button class="btn btn-line btn-sm" id="pwToggle" aria-expanded="false" aria-controls="pwForm" onclick="togglePwForm()">Change password</button>
       <button class="btn btn-line btn-sm" onclick="signOut()">Log out</button>
     </div>
     <form class="pwform" id="pwForm" hidden onsubmit="event.preventDefault(); changePassword()">
@@ -861,7 +864,10 @@
       <div class="pwrow"><label for="p_newpw" class="sr">New password</label><input id="p_newpw" type="password" placeholder="New password" minlength="8" autocomplete="new-password" required><button type="button" class="linkbtn showpw" onclick="togglePwVisible(this, 'p_newpw', 'p_newpw2')">Show</button></div>
       <div class="pwrow"><label for="p_newpw2" class="sr">Confirm new password</label><input id="p_newpw2" type="password" placeholder="Type it again" minlength="8" autocomplete="new-password" required></div>
       <div class="qerr" id="pwMsg" role="status"></div>
-      <div><button class="btn btn-ink btn-sm" id="pwSave">Save new password</button></div>
+      <div class="profcard-actions" style="margin-top:0">
+        <button class="btn btn-ink btn-sm" id="pwSave">Save new password</button>
+        <button type="button" class="btn btn-line btn-sm" onclick="closePwForm()">Cancel</button>
+      </div>
     </form>
   </div>
 </div>
@@ -1058,10 +1064,21 @@ async function saveNewPassword() {
 // From My Circles, already signed in. Also how Google or magic-link members
 // add a password to their account.
 function togglePwForm() {
-  const f = $("pwForm");
-  f.hidden = !f.hidden;
+  if (!$("pwForm").hidden) return closePwForm();
+  $("pwForm").hidden = false;
+  $("pwToggle").setAttribute("aria-expanded", "true");
   $("pwMsg").textContent = "";
-  if (!f.hidden) $("p_newpw").focus();
+  $("p_newpw").focus();
+}
+
+// Closing always clears what was typed, and puts the fields back to hidden text.
+function closePwForm() {
+  $("pwForm").hidden = true;
+  $("pwToggle").setAttribute("aria-expanded", "false");
+  $("p_newpw").value = $("p_newpw2").value = "";
+  $("p_newpw").type = $("p_newpw2").type = "password";
+  $("pwForm").querySelector(".showpw").textContent = "Show";
+  $("pwMsg").textContent = "";
 }
 
 async function changePassword() {
@@ -1073,8 +1090,7 @@ async function changePassword() {
   try {
     const { error } = await sb.auth.updateUser({ password: $("p_newpw").value });
     if (error) throw error;
-    $("p_newpw").value = $("p_newpw2").value = "";
-    $("pwForm").hidden = true;
+    closePwForm();
     flash("✓ Your new password is saved. Use it next time you sign in with email.");
   } catch (e) {
     msg.textContent = /reauth/i.test(e.message || "")
@@ -1268,6 +1284,7 @@ function myRow(item, pill, pillClass, extra = "") {
 }
 
 function renderMe() {
+  closePwForm();
   const { member, activity } = ME;
   const c = activity.counts;
   $("meName").firstChild.textContent = member.name.split(/\s+/)[0];
