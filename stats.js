@@ -517,6 +517,37 @@ function corporateStats(responses, filters = {}) {
   };
 }
 
+// ---------- one member's own progress (private) ----------
+
+// The 1-5 scales a member sees on their own progress page, in plain words.
+// Higher is better on all of them except the "before" heavy-mind scale,
+// which is flagged so the page can say so.
+const PERSONAL_SCALES = [
+  ["pre_happy_safe", "Before: felt happy and safe to be myself"],
+  ["pre_mind_heavy", "Before: mind felt heavy or stressed", true],
+  ["pre_self_worth", "Before: knew I am important"],
+  ["post_self_worth", "After: saw that I am valuable and strong"],
+  ["post_mind_lighter", "After: mind felt lighter"],
+  ["post_mind_peaceful", "After: mind felt peaceful"],
+  ["post_understand_feelings", "After: understood my feelings better"],
+  ["circle_safe_to_share", "Felt safe to share in the circle"],
+  ["circle_connection", "Felt connected to others"],
+];
+
+// Scores from a single response, using the same scales (and legacy field
+// names) as the dashboards. wellbeing is the Wellbeing Index for this one
+// response: the mean of the positive post-session scales, 1-5.
+function personalScores(d) {
+  const data = d || {};
+  const wb = rowScaleAvg(data, WELLBEING_POST);
+  const scales = [];
+  for (const [field, label, lowerIsBetter] of PERSONAL_SCALES) {
+    const v = resolveScale(data, field);
+    if (Number.isFinite(v) && v >= 1 && v <= 5) scales.push({ field, label, value: v, lowerIsBetter: Boolean(lowerIsBetter) });
+  }
+  return { wellbeing: wb === null ? null : round2(wb), scales };
+}
+
 // ---------- participant grouping (internal) ----------
 
 function decorate(group) {
@@ -564,4 +595,5 @@ module.exports = {
   communityStats,
   corporateStats,
   groupByParticipant,
+  personalScores,
 };

@@ -5,6 +5,7 @@ const storage = require("./storage");
 const supabase = require("./supabase");
 const stats = require("./stats");
 const survey = require("./survey");
+const notify = require("./notify");
 
 const app = express();
 // 6mb (not the old 1mb): Harmoni Circle proposals carry up to 3 small
@@ -204,6 +205,16 @@ app.post("/api/chat", async (req, res) => {
         surveyData = JSON.parse(dataRaw);
       } catch {
         surveyData = { parse_error: true, raw: dataRaw };
+      }
+      if (!surveyData || typeof surveyData !== "object") surveyData = { raw: surveyData };
+      // Who answered, and about which Circle, only ever comes from a signed
+      // survey link (see surveyToken), never from the chat itself.
+      delete surveyData.memberId;
+      delete surveyData.eventId;
+      const link = readSurveyToken(req.body.link);
+      if (link) {
+        surveyData.memberId = link.memberId;
+        surveyData.eventId = link.eventId;
       }
 
       const record = {
@@ -715,7 +726,7 @@ const adminNote = (ev) => (ev.adminNote && ev.adminNote !== "undefined" ? ev.adm
 //   joined   - Circles they RSVP'd "going" to and got a seat (not waitlisted)
 //   proposed - every proposal they submitted, whatever its status
 //   hosted   - their proposals that went live and have now taken place
-function memberActivity(events, memberId) {
+function memberActivity(events, memberId, surveyed = new Set()) {
   const now = Date.now();
   const joined = [];
   const proposals = [];
@@ -739,7 +750,9 @@ function memberActivity(events, memberId) {
       const going = (Array.isArray(d.rsvps) ? d.rsvps : [])
         .filter((r) => r.status === "going" && !r.waitlisted)
         .reduce((s, r) => s + r.pax, 0);
-      proposals.push({ ...card, submittedAt: ev.submittedAt, goingCount: going, adminNote: adminNote(ev) });
+      const rev = ev.status === "needs_revision" && d.revision ? d.revision : null;
+      const toRevise = rev ? (rev.flags || []).length + (rev.changes || []).length : 0;
+      proposals.push({ ...card, submittedAt: ev.submittedAt, goingCount: going, adminNote: adminNote(ev), toRevise });
     }
 
     const r = live && (Array.isArray(d.rsvps) ? d.rsvps : []).find(byMember(memberId));
@@ -751,6 +764,10 @@ function memberActivity(events, memberId) {
         pax: r.pax,
         paymentStatus: r.paymentStatus || null,
         paymentUrl: r.paymentStatus === "pending" && needsPayment(d) ? d.paymentUrl : null,
+        // Circles they had a seat at and that have happened can be reviewed
+        // in the impact survey, once.
+        surveyDone: surveyed.has(ev.id),
+        surveyUrl: past && r.status === "going" && !r.waitlisted && !surveyed.has(ev.id) ? surveyPath(memberId, ev.id) : null,
       });
     }
   }
@@ -779,6 +796,8 @@ const MEMBER_ROLES = {
   fighter: "Mental health fighter",
   caregiver: "Caregiver",
   practitioner: "Practitioner",
+  leader: "Community leader / volunteer",
+  public: "General public",
 };
 const MY_STATES = [
   "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan", "Pahang", "Perak", "Perlis",
@@ -810,10 +829,107 @@ const memberProfile = (m) => {
     state: d.state || "",
     city: d.city || "",
     photo: photoUrl(m),
+    // Which emails they get: { rsvp, listing, newEvents, reminders }.
+    notify: notify.prefs(m),
     // Name, at least one role and a location. The photo stays optional.
     profileComplete: Boolean(m.name && roles.length && d.state),
   };
 };
+
+// ---------- post-Circle survey links ----------
+//
+// "Share how it went" opens the impact survey bot (/bot/) with a signed token
+// naming the member and the Circle. The bot sends it back with the finished
+// survey and the server attaches memberId/eventId to the stored response, so
+// a member's answers feed their own progress view. The token is an HMAC over
+// [memberId, eventId, expiry]; a raw member id in a URL is never trusted.
+
+const SURVEY_LINK_KEY = crypto
+  .createHash("sha256")
+  .update(
+    "survey-link:" +
+      (process.env.SURVEY_LINK_SECRET ||
+        process.env.SURVEY_SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        ADMIN_PASSWORD)
+  )
+  .digest();
+const SURVEY_LINK_DAYS = 30;
+
+function surveyToken(memberId, eventId) {
+  const exp = Math.floor(Date.now() / 1000) + SURVEY_LINK_DAYS * 86400;
+  const body = Buffer.from(JSON.stringify([memberId, eventId, exp])).toString("base64url");
+  return `${body}.${crypto.createHmac("sha256", SURVEY_LINK_KEY).update(body).digest("base64url")}`;
+}
+
+// { memberId, eventId } for a valid, unexpired token; null for anything else.
+function readSurveyToken(token) {
+  if (typeof token !== "string" || token.length > 600) return null;
+  const [body, sig] = token.split(".");
+  if (!body || !sig) return null;
+  const want = crypto.createHmac("sha256", SURVEY_LINK_KEY).update(body).digest();
+  const got = Buffer.from(sig, "base64url");
+  if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return null;
+  try {
+    const [memberId, eventId, exp] = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (typeof memberId !== "string" || typeof eventId !== "string" || !(exp * 1000 > Date.now())) return null;
+    return { memberId, eventId };
+  } catch {
+    return null;
+  }
+}
+
+const surveyPath = (memberId, eventId) =>
+  `/bot/?program=wip-harmoni-circle&event=${encodeURIComponent(eventId)}&m=${surveyToken(memberId, eventId)}`;
+
+// Event ids this member has already answered the survey for.
+const surveyedEvents = (responses, memberId) =>
+  new Set(
+    responses
+      .map((r) => r.data || {})
+      .filter((d) => d.memberId === memberId && d.eventId)
+      .map((d) => d.eventId)
+  );
+
+// Public, for the bot page: what a survey link is about, so it can say
+// "Sharing about: <Circle>". Says nothing about the member.
+app.get("/api/survey/link", async (req, res) => {
+  const link = readSurveyToken(req.query.m);
+  if (!link) return res.status(400).json({ error: "This survey link has expired. You can still take the survey, or open a fresh link from My Circles." });
+  try {
+    const events = await storage.loadEvents();
+    const ev = events.find((e) => e.id === link.eventId);
+    res.json({ ok: true, title: ev ? ev.data.title : null, dateTime: ev ? ev.data.dateTime : null, program: "WIP Harmoni Circle" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// A member's own survey answers over time, for "My progress". Only their own
+// responses, and only scores: never transcripts, free-text answers or anyone
+// else's data.
+app.get("/api/member/progress", requireMember, async (req, res) => {
+  try {
+    const [responses, events] = await Promise.all([storage.loadResponses(), storage.loadEvents()]);
+    const titles = new Map(events.map((e) => [e.id, e.data && e.data.title]));
+    const entries = responses
+      .filter((r) => r.data && r.data.memberId === req.member.id)
+      .map((r) => {
+        const { wellbeing, scales } = stats.personalScores(r.data);
+        return {
+          at: r.submittedAt,
+          eventId: r.data.eventId || null,
+          circle: titles.get(r.data.eventId) || null,
+          wellbeing,
+          scales,
+        };
+      })
+      .sort((a, b) => new Date(a.at) - new Date(b.at));
+    res.json({ entries });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Public: tells the page whether logins are on and how to reach Supabase.
 // The anon key is meant for browsers; it grants nothing the RLS policies
@@ -888,10 +1004,10 @@ app.post("/api/member/join", requireUser, async (req, res) => {
 
 app.get("/api/member/me", requireMember, async (req, res) => {
   try {
-    const events = await storage.loadEvents();
+    const [events, responses] = await Promise.all([storage.loadEvents(), storage.loadResponses()]);
     res.json({
       member: memberProfile(req.member),
-      activity: memberActivity(events, req.member.id),
+      activity: memberActivity(events, req.member.id, surveyedEvents(responses, req.member.id)),
       profileOptions: { roles: MEMBER_ROLES, states: MY_STATES },
     });
   } catch (e) {
@@ -899,8 +1015,8 @@ app.get("/api/member/me", requireMember, async (req, res) => {
   }
 });
 
-// Profile editing: any of { name, roles, state, city, photo } (photo null
-// removes it). Email and sign-in method belong to Supabase Auth. Roles and
+// Profile editing: any of { name, roles, state, city, photo, notify } (photo
+// null removes it; notify is { rsvp, listing, newEvents, reminders } booleans). Email and sign-in method belong to Supabase Auth. Roles and
 // location are only ever shown to the member and admins; name and photo are
 // what other members see.
 app.post("/api/member/me", requireMember, async (req, res) => {
@@ -926,6 +1042,16 @@ app.post("/api/member/me", requireMember, async (req, res) => {
         if (f.data.length > 400_000) throw new Error("That photo is too large. Try another one.");
         d.photo = { key: crypto.randomUUID(), type: f.type, data: f.data };
       }
+    }
+    if (b.notify !== undefined) {
+      if (!b.notify || typeof b.notify !== "object") throw new Error("Email settings must be a list of on/off choices");
+      const next = { ...notify.prefs(m) };
+      for (const k of notify.NOTIFY_KEYS) {
+        if (b.notify[k] === undefined) continue;
+        if (typeof b.notify[k] !== "boolean") throw new Error("Email settings must be on or off");
+        next[k] = b.notify[k];
+      }
+      d.notify = next;
     }
     d.profileUpdatedAt = new Date().toISOString();
     await storage.updateMember(req.memberIndex, m);
@@ -988,6 +1114,107 @@ app.post("/api/harmoni/events", requireMember, async (req, res) => {
       decidedBy: null,
     };
     await storage.appendEvent(record);
+    if (notify.wants(req.member, "listing")) {
+      await notify.send(notify.listingStatus(data.createdBy.email, req.member.name, data, "under_review"));
+    }
+    res.json({ ok: true, id: record.id });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// The proposer's own proposal, in full, so they can revise it when the WIP
+// team asks for changes (status needs_revision).
+const REVISABLE = new Set(["needs_revision"]);
+const ownedBy = (ev, memberId) => Boolean(ev && ev.data && ev.data.createdBy && ev.data.createdBy.id === memberId);
+
+// Proposal fields the WIP team can edit directly or flag for the host when
+// asking for changes, in form order. Labels are what the host reads in My
+// Circles and in the email. Fields marked `flagOnly` can be flagged but not
+// edited by the admin (files and the materials list stay the host's).
+const REVISION_FIELDS = {
+  title: "Session title", coverImage: { label: "Cover photo", flagOnly: true }, sessionType: "Session type",
+  audience: "Who it's for", dateTime: "Date & time", duration: "Duration",
+  coreActivity: "What participants will do", flow: "Session flow", reference: "Reference link",
+  attachments: { label: "Photos / PDFs of past work", flagOnly: true },
+  venueMode: "In person / online", venueName: "Venue", venueAddress: "Venue address", venueNotes: "Venue booking notes",
+  minCapacity: "Smallest group", capacity: "Largest group", prep: "Setup & preparation",
+  takeaway: "What people walk away with", intention: "Deeper intention",
+  theme: "Theme", themeExplain: "Theme in their words", keyMessage: "Key message",
+  costs: { label: "Materials & who provides them", flagOnly: true }, costPerParticipant: "Cost per person (RM)",
+  ticketPrice: "Ticket price (RM)", projectedAttendees: "Expected attendees",
+  opening: "Opening", instructions: "Step-by-step instructions", closing: "Closing", prompts: "Reflection prompts",
+  help: "Help needed", accessibility: "Accessibility", other: "Anything else",
+  contactName: "Contact name", contactEmail: "Contact email",
+};
+const fieldLabel = (k) => (typeof REVISION_FIELDS[k] === "string" ? REVISION_FIELDS[k] : REVISION_FIELDS[k].label);
+const revisionValue = (d, k) => (d[k] === null || d[k] === undefined ? "" : k === "dateTime" ? d[k] : String(d[k]));
+
+// What changed between two versions of a proposal, as [{ field, label, from, to }],
+// over the fields WIP and the host both edit as text.
+function proposalDiff(before, after) {
+  return Object.keys(REVISION_FIELDS)
+    .filter((k) => typeof REVISION_FIELDS[k] === "string" && revisionValue(before, k) !== revisionValue(after, k))
+    .map((k) => ({ field: k, label: fieldLabel(k), from: revisionValue(before, k), to: revisionValue(after, k) }));
+}
+
+// A stored proposal back into the shape buildProposal takes, so an edited copy
+// goes through exactly the same checks as the host's own submission.
+function proposalBody(d) {
+  const { rsvps, comments, financials, createdBy, paymentUrl, announcedAt, remindersSent, resubmittedAt, revision, cover, ...rest } = d;
+  return { ...rest, coverId: cover && cover.id, safeguarding: true };
+}
+
+// Bookkeeping the proposal form doesn't own, carried from the old version.
+function carryOver(old, data) {
+  data.createdBy = old.createdBy;
+  data.rsvps = Array.isArray(old.rsvps) ? old.rsvps : [];
+  data.comments = Array.isArray(old.comments) ? old.comments : [];
+  for (const k of ["paymentUrl", "announcedAt", "remindersSent", "resubmittedAt", "revision"]) if (old[k]) data[k] = old[k];
+  return data;
+}
+
+app.get("/api/harmoni/events/:id/edit", requireMember, async (req, res) => {
+  try {
+    const events = await storage.loadEvents();
+    const ev = events.find((e) => e.id === req.params.id);
+    if (!ownedBy(ev, req.member.id)) return res.status(404).json({ error: "Proposal not found" });
+    if (!REVISABLE.has(ev.status)) return res.status(400).json({ error: "This proposal can't be edited right now" });
+    const { rsvps, comments, financials, createdBy, paymentUrl, announcedAt, remindersSent, resubmittedAt, revision, ...proposal } = ev.data;
+    res.json({ proposal, adminNote: adminNote(ev), revision: revision || null });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Resubmit a revised proposal: same validation as a new one, then it goes
+// back into the review queue. Bookkeeping the member can't set (who proposed
+// it, RSVPs, comments, payment link) carries over from the stored record.
+app.put("/api/harmoni/events/:id", requireMember, async (req, res) => {
+  try {
+    const events = await storage.loadEvents();
+    const index = events.findIndex((e) => e.id === req.params.id);
+    const record = events[index];
+    if (!ownedBy(record, req.member.id)) return res.status(404).json({ error: "Proposal not found" });
+    if (!REVISABLE.has(record.status)) return res.status(400).json({ error: "This proposal can't be edited right now" });
+
+    const old = record.data;
+    const data = carryOver(old, buildProposal(req.body || {}));
+    data.resubmittedAt = new Date().toISOString();
+    record.data = data;
+    record.status = "under_review";
+    // What the host changed on top of the version WIP sent back, so the
+    // admin can see whether the flagged points were dealt with.
+    if (data.revision) {
+      data.revision = { ...data.revision, resubmittedAt: data.resubmittedAt, hostChanges: proposalDiff(old, data) };
+    }
+
+    await storage.updateEvent(index, record);
+    if (notify.wants(req.member, "listing")) {
+      await notify.send(
+        notify.listingStatus(data.createdBy.email, req.member.name, data, "under_review", null, { resubmitted: true })
+      );
+    }
     res.json({ ok: true, id: record.id });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1030,7 +1257,7 @@ app.post("/api/harmoni/events/:id/rsvp", requireMember, async (req, res) => {
     if (status === "going" && needsPayment(d)) {
       paymentStatus = previous && previous.paymentStatus === "paid" && previous.pax >= pax ? "paid" : "pending";
     }
-    d.rsvps.push({
+    const rsvp = {
       memberId: req.member.id,
       name: req.member.name,
       status,
@@ -1038,11 +1265,16 @@ app.post("/api/harmoni/events/:id/rsvp", requireMember, async (req, res) => {
       waitlisted,
       paymentStatus,
       at: new Date().toISOString(),
-    });
+    };
+    d.rsvps.push(rsvp);
 
     await storage.updateEvent(index, record);
     // Waitlisted people don't pay until a seat is theirs.
-    res.json({ ok: true, waitlisted, paymentUrl: paymentStatus === "pending" && !waitlisted ? d.paymentUrl : null });
+    const paymentUrl = paymentStatus === "pending" && !waitlisted ? d.paymentUrl : null;
+    if (notify.wants(req.member, "rsvp")) {
+      await notify.send(notify.rsvpConfirmation(req.member, d, rsvp, paymentUrl));
+    }
+    res.json({ ok: true, waitlisted, paymentUrl });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -1160,7 +1392,10 @@ app.delete("/api/harmoni/events/:id/rsvp", requireMember, async (req, res) => {
     const d = record.data;
     const before = Array.isArray(d.rsvps) ? d.rsvps.length : 0;
     d.rsvps = (d.rsvps || []).filter((r) => !byMember(req.member.id)(r));
-    if (d.rsvps.length !== before) await storage.updateEvent(index, record);
+    if (d.rsvps.length !== before) {
+      await storage.updateEvent(index, record);
+      if (notify.wants(req.member, "rsvp")) await notify.send(notify.rsvpWithdrawn(req.member, d));
+    }
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1204,6 +1439,7 @@ app.get("/api/admin/harmoni/events", requireAdmin, async (req, res) => {
           adminNote: adminNote(ev),
           decidedAt: ev.decidedAt || null,
           decidedBy: ev.decidedBy || null,
+          revision: (ev.data && ev.data.revision) || null,
           data: ev.data,
         }))
         .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)),
@@ -1268,7 +1504,7 @@ app.get("/api/admin/harmoni/members", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) => {
-  const VALID = new Set(["under_review", "approved", "rejected", "completed", "cancelled"]);
+  const VALID = new Set(["under_review", "needs_revision", "approved", "rejected", "completed", "cancelled"]);
   const target = req.body && req.body.status;
   if (!VALID.has(target)) {
     return res.status(400).json({ error: "Invalid status" });
@@ -1279,6 +1515,7 @@ app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) 
     if (index < 0) return res.status(404).json({ error: "Event not found" });
 
     const record = events[index];
+    const previous = record.status;
     record.status = target;
     record.decidedAt = new Date().toISOString();
     record.decidedBy = "admin";
@@ -1286,10 +1523,217 @@ app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) 
     if (typeof req.body.note === "string") {
       record.adminNote = req.body.note.trim().slice(0, 300) || null;
     }
+    // A note-only change request (no edits or flagged fields).
+    if (target === "needs_revision") {
+      record.data.revision = { requestedAt: record.decidedAt, note: record.adminNote, changes: [], flags: [] };
+    }
+    // A Circle is announced to members once, the first time it goes live, so
+    // a re-open after "completed" or a trip back through review doesn't
+    // announce it again.
+    const announce = target === "approved" && !record.data.announcedAt && new Date(record.data.dateTime) > new Date();
+    if (announce) record.data.announcedAt = new Date().toISOString();
 
     await storage.updateEvent(index, record);
+    if (previous !== target) await notifyStatusChange(record, previous, announce);
     res.json({ ok: true, status: record.status });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// "Request changes" with the proposal in hand: the WIP team edits fields
+// directly (applied now, the host reviews and accepts them when resubmitting)
+// and/or flags fields for the host to rework, plus an overall note. Body:
+// { note, edits: { field: value }, flags: { field: "what to change" } }.
+app.post("/api/admin/harmoni/events/:id/request-changes", requireAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const note = typeof b.note === "string" ? b.note.trim().slice(0, 1000) : "";
+    const edits = b.edits && typeof b.edits === "object" ? b.edits : {};
+    const flagsIn = b.flags && typeof b.flags === "object" ? b.flags : {};
+    for (const k of Object.keys(edits)) {
+      if (!REVISION_FIELDS[k] || typeof REVISION_FIELDS[k] !== "string") throw new Error(`"${k}" can't be edited here`);
+    }
+    const flags = Object.keys(flagsIn).map((k) => {
+      if (!REVISION_FIELDS[k]) throw new Error(`"${k}" isn't a proposal field`);
+      return { field: k, label: fieldLabel(k), note: typeof flagsIn[k] === "string" ? flagsIn[k].trim().slice(0, 500) : "" };
+    });
+
+    const events = await storage.loadEvents();
+    const index = events.findIndex((ev) => ev.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: "Event not found" });
+    const record = events[index];
+    if (!["under_review", "needs_revision"].includes(record.status)) {
+      return res.status(400).json({ error: "Only proposals in review can be sent back for changes" });
+    }
+
+    const old = record.data;
+    let data = old;
+    let changes = [];
+    if (Object.keys(edits).length) {
+      // Same checks as the host's own form, so WIP can't save a proposal the
+      // host couldn't have sent.
+      data = carryOver(old, buildProposal({ ...proposalBody(old), ...edits }));
+      changes = proposalDiff(old, data);
+    }
+    // Updating a request the host hasn't answered yet: edits made last time
+    // are already in the proposal, so keep them listed (from the host's
+    // original value) alongside any new ones.
+    const pending = record.status === "needs_revision" && old.revision && !old.revision.resubmittedAt ? old.revision.changes || [] : [];
+    if (pending.length) {
+      const merged = pending.map((c) => {
+        const now = changes.find((n) => n.field === c.field);
+        return now ? { ...c, to: now.to } : c;
+      });
+      changes = merged.concat(changes.filter((n) => !pending.some((c) => c.field === n.field))).filter((c) => c.from !== c.to);
+    }
+    if (!note && !flags.length && !changes.length) {
+      return res.status(400).json({ error: "Edit a field, flag one for the host, or add a note so the host knows what to change" });
+    }
+
+    const previous = record.status;
+    record.data = data;
+    record.status = "needs_revision";
+    record.decidedAt = new Date().toISOString();
+    record.decidedBy = "admin";
+    record.adminNote = note || null;
+    // Kept inside data: the Supabase mirror only stores the fixed columns.
+    data.revision = { requestedAt: record.decidedAt, note: note || null, changes, flags };
+    await storage.updateEvent(index, record);
+    if (previous !== "needs_revision" || changes.length || flags.length) await notifyStatusChange(record, previous, false);
+    res.json({ ok: true, status: record.status, changes: changes.length, flags: flags.length });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Emails for an admin status change, sent after the change is saved. The
+// proposer hears about the outcomes that matter to them; members who opted in
+// hear about a newly live Circle.
+const LISTING_EMAILS = new Set(["approved", "needs_revision", "rejected", "cancelled"]);
+
+async function notifyStatusChange(record, previous, announce) {
+  try {
+    const d = record.data || {};
+    const members = await storage.loadMembers();
+    const host = d.createdBy && members.find((m) => m.id === d.createdBy.id);
+    // A re-open after "completed" isn't news to the host.
+    const tellHost = LISTING_EMAILS.has(record.status) && !(record.status === "approved" && previous === "completed");
+    // Pre-account proposals have no member record, so no settings to respect.
+    if (tellHost && d.createdBy && d.createdBy.email && (!host || notify.wants(host, "listing"))) {
+      const revision = record.status === "needs_revision" ? d.revision : null;
+      await notify.send(notify.listingStatus(d.createdBy.email, d.createdBy.name, d, record.status, adminNote(record), { revision }));
+    } else if (tellHost) {
+      // Say why in the logs, so a missing email can be traced from Vercel.
+      console.log(`No "${record.status}" email for "${d.title}": ${!d.createdBy || !d.createdBy.email
+        ? "the proposal has no member account (submitted before logins)"
+        : "the host turned off emails about their proposals"}`);
+    }
+    if (announce) {
+      await notify.sendMany(
+        members
+          .filter((m) => m.id !== (d.createdBy && d.createdBy.id) && notify.wants(m, "newEvents"))
+          .map((m) => notify.newCircle(m, d))
+      );
+    }
+  } catch (e) {
+    console.error("Status emails failed:", e.message);
+  }
+}
+
+// ---------- WIP Harmoni Circle: daily reminders (Vercel Cron) ----------
+
+// Vercel calls this once a day (vercel.json "crons") with
+// `Authorization: Bearer $CRON_SECRET`. Members with a seat ("going", not
+// waitlisted) at a live Circle starting within the next 48 hours get one
+// reminder; data.remindersSent records who has had theirs, so a re-run or a
+// second day inside the window sends nothing twice.
+const REMINDER_WINDOW_MS = 48 * 3600_000;
+
+function cronAuthorized(req) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const hash = (s) => crypto.createHash("sha256").update(String(s)).digest();
+  return crypto.timingSafeEqual(hash(req.headers.authorization || ""), hash(`Bearer ${secret}`));
+}
+
+// After a Circle: one "How was it?" email per member who had a seat, for
+// Circles that started between 2 and 50 hours ago (the cron runs daily, so
+// each Circle gets one pass). data.surveyInvitesSent keeps it to once, and
+// anyone who has already answered for that Circle is skipped.
+const SURVEY_AFTER_MS = 2 * 3600_000;
+const SURVEY_WINDOW_MS = 50 * 3600_000;
+
+async function sendSurveyInvites(events, byId, now) {
+  const report = [];
+  let responses = null;
+  for (let index = 0; index < events.length; index++) {
+    const record = events[index];
+    const d = record.data || {};
+    const start = new Date(d.dateTime).getTime();
+    const ago = now - start;
+    if (!["approved", "completed"].includes(record.status) || !(ago >= SURVEY_AFTER_MS && ago <= SURVEY_WINDOW_MS)) continue;
+
+    const already = d.surveyInvitesSent || {};
+    const due = (Array.isArray(d.rsvps) ? d.rsvps : [])
+      .filter((r) => r.status === "going" && !r.waitlisted && r.memberId && !already[r.memberId])
+      .map((r) => byId.get(r.memberId))
+      .filter((m) => notify.wants(m, "surveys"));
+    if (!due.length) continue;
+
+    if (!responses) responses = await storage.loadResponses();
+    const msgs = due
+      .filter((m) => !surveyedEvents(responses, m.id).has(record.id))
+      .map((m) => ({ ...notify.surveyInvite(m, d, notify.SITE_URL + surveyPath(m.id, record.id)), memberId: m.id }));
+    const sent = await notify.sendMany(msgs.map(({ memberId, ...msg }) => msg));
+    const sentTo = new Set(sent.map((s) => s.to));
+    const reached = msgs.filter((msg) => sentTo.has(msg.to)).map((msg) => msg.memberId);
+    if (reached.length) {
+      const at = new Date().toISOString();
+      d.surveyInvitesSent = { ...already, ...Object.fromEntries(reached.map((id) => [id, at])) };
+      await storage.updateEvent(index, record);
+    }
+    report.push({ id: record.id, due: msgs.length, sent: reached.length });
+  }
+  return report;
+}
+
+app.get("/api/cron/reminders", async (req, res) => {
+  if (!process.env.CRON_SECRET) return res.status(503).json({ error: "CRON_SECRET is not set" });
+  if (!cronAuthorized(req)) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const [events, members] = await Promise.all([storage.loadEvents(), storage.loadMembers()]);
+    const byId = new Map(members.map((m) => [m.id, m]));
+    const now = Date.now();
+    const report = [];
+    for (let index = 0; index < events.length; index++) {
+      const record = events[index];
+      const d = record.data || {};
+      const start = new Date(d.dateTime).getTime();
+      if (record.status !== "approved" || !(start > now && start - now <= REMINDER_WINDOW_MS)) continue;
+
+      const already = d.remindersSent || {};
+      const due = (Array.isArray(d.rsvps) ? d.rsvps : [])
+        .filter((r) => r.status === "going" && !r.waitlisted && r.memberId && !already[r.memberId])
+        .map((r) => ({ r, m: byId.get(r.memberId) }))
+        .filter(({ m }) => notify.wants(m, "reminders"));
+      if (!due.length) continue;
+
+      const msgs = due.map(({ r, m }) => ({ ...notify.reminder(m, d, r), memberId: m.id }));
+      const sent = await notify.sendMany(msgs.map(({ memberId, ...msg }) => msg));
+      const sentTo = new Set(sent.map((s) => s.to));
+      const at = new Date().toISOString();
+      const reached = msgs.filter((msg) => sentTo.has(msg.to)).map((msg) => msg.memberId);
+      if (reached.length) {
+        d.remindersSent = { ...already, ...Object.fromEntries(reached.map((id) => [id, at])) };
+        await storage.updateEvent(index, record);
+      }
+      report.push({ id: record.id, due: due.length, sent: reached.length });
+    }
+    const surveys = await sendSurveyInvites(events, byId, now);
+    res.json({ ok: true, events: report, surveys });
+  } catch (e) {
+    console.error("Reminder run failed:", e.message);
     res.status(500).json({ error: e.message });
   }
 });

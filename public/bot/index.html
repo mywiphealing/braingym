@@ -111,6 +111,8 @@
   }
   .hero .meta i { width: 7px; height: 7px; border-radius: 50%; background: var(--banana-bright); display: inline-block; }
   .hero .slim-title { display: none; }
+  .circle-link { margin: 0 0 10px; background: var(--white); border: 1.5px solid var(--ink); border-radius: 16px; padding: 10px 14px; font-size: .9rem; line-height: 1.45; }
+  .circle-link b { display: block; font-size: .95rem; }
 
   header.hero.slim {
     display: flex; align-items: center; gap: 10px; text-align: left;
@@ -412,6 +414,32 @@ const hero = document.getElementById("hero");
 
 let messages = [];
 let busy = false;
+
+// Opened from "Share how it went" in My Circles (or the post-Circle email):
+// m is a signed token naming the member and the Circle. It's sent back with
+// the answers so they land in that member's own progress view. Without it
+// the survey works exactly as before.
+const params = new URLSearchParams(location.search);
+const surveyLink = params.get("m") || null;
+let linkedProgram = null;
+
+async function showCircleLink() {
+  if (!surveyLink) return;
+  const note = document.createElement("section");
+  note.className = "circle-link";
+  try {
+    const res = await fetch("/api/survey/link?m=" + encodeURIComponent(surveyLink));
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Link expired");
+    linkedProgram = d.program;
+    const when = d.dateTime ? new Date(d.dateTime).toLocaleDateString("en-MY", { day: "numeric", month: "long" }) : "";
+    note.innerHTML = "<b></b>Your answers will show up in My progress on your Circle page. Only you and the WIP team can see them.";
+    note.querySelector("b").textContent = "Sharing about: " + (d.title || "your Circle") + (when ? " (" + when + ")" : "");
+  } catch (e) {
+    note.textContent = e.message;
+  }
+  chat.prepend(note);
+}
 let chipRow = null;
 let lastRole = null;
 
@@ -597,6 +625,7 @@ async function sendAnswer(text) {
 }
 
 async function callAI() {
+  let autoPick = null;
   busy = true;
   send.disabled = true;
   const typing = addTyping();
@@ -604,14 +633,19 @@ async function callAI() {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages, link: surveyLink }),
     });
     const data = await res.json();
     typing.remove();
     if (!res.ok) throw new Error(data.error || "Server error");
     messages.push({ role: "assistant", content: data.raw || data.reply });
     addBubble(data.reply, "ai");
-    if (data.done) {
+    // A linked survey already knows the programme: answer question 1 for
+    // them, the same way tapping the button would.
+    autoPick = linkedProgram && messages.length === 1 && Array.isArray(data.options) ? data.options.find((o) => o === linkedProgram) : null;
+    if (autoPick) {
+      // Sent once this call has finished, below.
+    } else if (data.done) {
       showDone();
     } else if (Array.isArray(data.options) && data.options.length) {
       if (data.scale) showScale(data.options);
@@ -624,6 +658,7 @@ async function callAI() {
     busy = false;
     send.disabled = false;
   }
+  if (autoPick) await sendAnswer(autoPick);
 }
 
 form.addEventListener("submit", async (e) => {
@@ -656,7 +691,7 @@ chat.addEventListener("scroll", () => {
 }, { passive: true });
 
 // kick off: ask the AI for its greeting + first question
-callAI();
+showCircleLink().then(callAI);
 </script>
 </body>
 </html>
