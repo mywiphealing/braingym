@@ -97,6 +97,9 @@
   .revbox ul { margin: 0; padding-left: 18px; }
   .revbox li { margin: 3px 0; }
   .revbox .from { color: var(--muted); text-decoration: line-through; }
+  .emailnotice { border: 1.5px solid var(--ink); border-radius: var(--radius); padding: 10px 14px; font-size: 13.5px; margin: 10px 0; word-break: break-word; }
+  .emailnotice.ok { background: rgba(42,111,43,.1); }
+  .emailnotice.bad { background: #FFE2D6; font-weight: 600; }
 </style>
 </head>
 <body class="theme-harmoni">
@@ -120,6 +123,7 @@
       <button class="btn btn-on-dark btn-sm" onclick="logout()">Logout</button>
     </div>
   </div>
+  <div id="emailNotice" class="emailnotice" role="status" hidden></div>
   <div id="content"></div>
   <div class="foot">
     <span class="brand">myWIPhealing · Harmoni Circles</span>
@@ -513,9 +517,10 @@ async function sendChanges(id, btn) {
   btn.disabled = true;
   btn.textContent = "Sending…";
   try {
-    await api(`/api/admin/harmoni/events/${encodeURIComponent(id)}/request-changes`, {
+    const r = await api(`/api/admin/harmoni/events/${encodeURIComponent(id)}/request-changes`, {
       method: "POST", body: JSON.stringify({ note, edits, flags }),
     });
+    emailNotice(r.email);
     showDash();
   } catch (e) {
     err.textContent = e.message;
@@ -618,12 +623,28 @@ async function setStatus(id, status) {
     if (note === null) return;
   }
   try {
-    await api(`/api/admin/harmoni/events/${encodeURIComponent(id)}/status`, {
+    const r = await api(`/api/admin/harmoni/events/${encodeURIComponent(id)}/status`, {
       method: "POST",
       body: JSON.stringify({ status, note }),
     });
+    emailNotice(r.email);
     showDash();
   } catch (e) { alert(e.message); }
+}
+
+// After an action that emails the host: a banner saying whether it went out.
+function emailNotice(e) {
+  const box = $("emailNotice");
+  if (!e) { box.hidden = true; return; }
+  box.hidden = false;
+  box.className = "emailnotice " + (e.sent ? "ok" : "bad");
+  box.innerHTML = e.sent
+    ? `✉️ Email sent to the host (${esc(e.to)}).`
+    : e.skipped
+      ? `✉️ No email to the host: ${esc(e.skipped)}.`
+      : `⚠️ The email to the host${e.to ? ` (${esc(e.to)})` : ""} wasn't sent: ${esc(e.error || "unknown error")}`;
+  box.innerHTML += ` <button class="btn btn-outline btn-sm mini" onclick="this.parentNode.hidden=true">OK</button>`;
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 $("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
