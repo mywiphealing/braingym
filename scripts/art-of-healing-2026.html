@@ -88,15 +88,20 @@
 .aoh__panel span{font-size:14px;color:#4a4a4a}
 
 /* 5. Partners + closing call */
-.aoh__partners{background:var(--aoh-cream);text-align:center}
-.aoh__partners .aoh__eyebrow{color:var(--aoh-myrtle)}
-.aoh__logos{list-style:none;margin:0 auto;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:12px;max-width:900px}
-.aoh__logos li{font-family:var(--aoh-head);font-size:18px;font-weight:500;padding:12px 22px;border-radius:12px;border:1px solid var(--aoh-ink);background:#fff}
-.aoh__logos small{display:block;font-size:13px;font-weight:400;color:#5f5f5b}
-.aoh__partners .aoh__btns{justify-content:center}
-.aoh__partners .aoh__btn--ghost{color:var(--aoh-ink);border-color:var(--aoh-ink)}
-.aoh__social{margin-top:24px!important;font-size:15px!important}
-.aoh__social a{color:var(--aoh-myrtle)}
+/* Partner logos as in the deck: white marks (and ASWARA's cream badge) on the
+   festival's deep green */
+.aoh__partners{background:var(--aoh-forest);color:#fff;text-align:center}
+.aoh__partners .aoh__eyebrow{color:var(--aoh-banana)}
+.aoh__logos{list-style:none;margin:8px auto 0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:28px 56px;max-width:1000px}
+.aoh__logos li{margin:0}
+.aoh__logos img{width:auto;max-width:100%}
+.aoh__logos .aoh__logo--suritma{height:44px}
+.aoh__logos .aoh__logo--mika{height:84px}
+.aoh__logos .aoh__logo--diced{height:68px}
+.aoh__logos .aoh__logo--aswara{height:80px;border-radius:6px}
+.aoh__partners .aoh__btns{justify-content:center;margin-top:44px}
+.aoh__social{margin-top:24px!important;font-size:15px!important;color:rgba(255,255,255,.85)!important}
+.aoh__social a{color:var(--aoh-lime)}
 
 @media (max-width:900px){
   .aoh section{padding:56px 16px}
@@ -111,6 +116,11 @@
   .aoh__timeline time{padding:10px 16px 0;background:none}
   .aoh__timeline a{padding:4px 16px 14px}
   .aoh__quote p{font-size:22px}
+  .aoh__logos{gap:24px 32px}
+  .aoh__logos .aoh__logo--suritma{height:32px}
+  .aoh__logos .aoh__logo--mika{height:64px}
+  .aoh__logos .aoh__logo--diced{height:52px}
+  .aoh__logos .aoh__logo--aswara{height:60px}
 }
 </style>
 
@@ -131,7 +141,7 @@
         <li>Art performance</li><li>Booth</li><li>Acoustic singing</li><li>Poetry</li>
       </ul>
       <div class="aoh__btns">
-        <a class="aoh__btn" href="https://www.canvaqr.com/RGUXc6FXpM" target="_blank" rel="noopener">Register here</a>
+        <a class="aoh__btn" href="https://luma.com/jh9c5vkj" target="_blank" rel="noopener">Register here</a>
         <a class="aoh__btn aoh__btn--ghost" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=The%20Art%20of%20Healing%20%2726%20%23back2roots&amp;dates=20261010T030000Z%2F20261010T090000Z&amp;location=Mika%20Coffee%20Roaster%2C%20Ara%20Damansara&amp;details=myWIPhealing%20presents%20The%20Art%20of%20Healing%20%2726%20with%20Suritma%20Collective.%20https%3A%2F%2Fwww.mywiphealing.com%2Fthe-art-of-healing-2026%2F" target="_blank" rel="noopener">Add to calendar</a>
         <a class="aoh__btn aoh__btn--ghost" href="https://www.google.com/maps/search/?api=1&amp;query=Mika%20Coffee%20Roaster%20Ara%20Damansara" target="_blank" rel="noopener">Get directions</a>
       </div>
@@ -237,7 +247,7 @@
           <p>There&rsquo;s something about weaving that mirrors how we heal. In Malay culture, gotong-royong isn&rsquo;t just about getting things done together &mdash; it&rsquo;s about showing up side by side. When your hands are busy and the person next to you is weaving their own thread, something shifts. The silence becomes safe. The space becomes shared.</p>
           <p>There&rsquo;s psychology behind it: repetitive, rhythmic motion (like weaving) regulates the nervous system. It lowers the guard. And when the guard drops, real conversations begin.</p>
           <p>That&rsquo;s the beauty of communal art. You start with a thread. You leave with a story &mdash; and maybe a new understanding of someone else&rsquo;s.</p>
-          <div class="aoh__btns" style="margin-top:8px"><a class="aoh__btn" href="https://www.canvaqr.com/RGUXc6FXpM" target="_blank" rel="noopener">Register here</a></div>
+          <div class="aoh__btns" style="margin-top:8px"><a class="aoh__btn" href="https://luma.com/jh9c5vkj" target="_blank" rel="noopener">Register here</a></div>
         </div>
       </article>
 
@@ -251,7 +261,7 @@
           <ul class="aoh__panel" aria-label="Panel">
             <li><b>Khairini</b><i>Moderator</i><span>Person with lived experience</span></li>
             <li><b>Dr. Amiera</b><i>Panellist</i><span>Clinical practitioner</span></li>
-            <li><b>Dr. Edina Nasseri</b><i>Panellist</i><span>Dean, Centre of Foundation Studies in Creative Arts, ASWARA</span></li>
+            <li><b>Dr. Natasha MH</b><i>Panellist</i><span>Board Governor, Malaysian Social Research Institute (MSRI), and co-founder of Retno Batik</span></li>
           </ul>
         </div>
       </article>
@@ -304,16 +314,15 @@
 
 <section class="aoh__partners" aria-labelledby="aoh-partners-title">
   <div class="aoh__inner">
-    <span class="aoh__eyebrow">In collaboration with</span>
-    <h2 id="aoh-partners-title">Made together</h2>
+    <h2 id="aoh-partners-title">In collaboration with</h2>
     <ul class="aoh__logos">
-      <li>Suritma Collective</li>
-      <li>Mika Coffee Roaster<small>Host venue</small></li>
-      <li>Diced Out<small>Congkak competition</small></li>
-      <li>ASWARA<small>Pusat Pengajian Asasi Seni Kreatif</small></li>
+      <li><img class="aoh__logo--suritma" src="/img/art-of-healing-2026/logo-suritma.png" width="728" height="152" loading="lazy" decoding="async" alt="Suritma Collective"></li>
+      <li><img class="aoh__logo--mika" src="/img/art-of-healing-2026/logo-mika-coffee.png" width="406" height="262" loading="lazy" decoding="async" alt="Mika Coffee Roaster"></li>
+      <li><img class="aoh__logo--diced" src="/img/art-of-healing-2026/logo-diced-out.png" width="498" height="198" loading="lazy" decoding="async" alt="Diced Out"></li>
+      <li><img class="aoh__logo--aswara" src="/img/art-of-healing-2026/logo-aswara.webp" width="524" height="178" loading="lazy" decoding="async" alt="Pusat Pengajian Asasi Seni Kreatif, ASWARA"></li>
     </ul>
     <div class="aoh__btns">
-      <a class="aoh__btn" href="https://www.canvaqr.com/RGUXc6FXpM" target="_blank" rel="noopener">Register for The Art of Healing &rsquo;26</a>
+      <a class="aoh__btn" href="https://luma.com/jh9c5vkj" target="_blank" rel="noopener">Register for The Art of Healing &rsquo;26</a>
       <a class="aoh__btn aoh__btn--ghost" href="/contact/">Talk to us</a>
     </div>
     <p class="aoh__social">Follow the stories at <a href="https://www.instagram.com/myships.stories/" target="_blank" rel="noopener">@myships.stories</a></p>
