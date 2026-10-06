@@ -157,9 +157,11 @@ cached 60s).
   data URL, ≤ ~1MB; the form shrinks photos first) becomes the event cover once approved.
 - `GET /api/harmoni/events/:id/edit` / `PUT /api/harmoni/events/:id` — member auth, proposer
   only (`data.createdBy.id`), and only while the proposal is `needs_revision`. `GET` returns the
-  stored answers plus the admin's note; `PUT` takes the same body as a new proposal, validates it
-  the same way, keeps RSVPs/comments/payment link, and puts it back to `under_review`. The page's
-  "Edit & resubmit" button in My Circles uses these.
+  stored answers plus the admin's note and `revision` (below); `PUT` takes the same body as a new
+  proposal, validates it the same way, keeps RSVPs/comments/payment link, records what the host
+  changed in `revision.hostChanges`, and puts it back to `under_review`. The page's "Review
+  changes & resubmit" button in My Circles uses these, and the form shows each WIP edit and
+  flagged field on its question.
 - `POST /api/harmoni/events/:id/rsvp` — member auth. `{ status: going|maybe, pax }`; the name
   comes from the account. One RSVP per member (a new one replaces it); `going` is capped at
   capacity with overflow flagged waitlisted. `DELETE` withdraws it. On a paid Circle, `going`
@@ -176,6 +178,13 @@ cached 60s).
   Review queue: list everything, then approve / request changes / reject / complete / cancel.
   Statuses: `under_review`, `needs_revision` ("To revise": the admin's note says what to change
   and the host can edit and resubmit), `approved`, `rejected`, `completed`, `cancelled`.
+- `POST /api/admin/harmoni/events/:id/request-changes` — admin auth, for proposals in
+  `under_review` or `needs_revision`. `{ note, edits: { field: value }, flags: { field: "what to
+  change" } }`. Edits are applied to the proposal straight away (re-validated like the host's own
+  form) and the host accepts them by resubmitting; flags ask the host to rework a field
+  themselves. Stored as `data.revision` `{ requestedAt, note, changes: [{ field, label, from, to }],
+  flags: [{ field, label, note }] }` and listed in the "To revise" email. The admin page's
+  "Request changes…" button opens this as an editable form.
 - `GET /api/cron/reminders` — `Authorization: Bearer $CRON_SECRET`. The daily job: reminders and
   post-Circle survey emails (see "Member emails").
 - `GET /api/member/progress` — member auth. "My progress": the member's **own** survey responses

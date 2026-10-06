@@ -207,7 +207,7 @@ function rsvpWithdrawn(member, d) {
 
 // The proposer's view of their listing. `status` is the new one; `resubmitted`
 // marks a needs_revision proposal sent back in.
-function listingStatus(to, name, d, status, note, { resubmitted = false } = {}) {
+function listingStatus(to, name, d, status, note, { resubmitted = false, revision = null } = {}) {
   const title = d.title || "your Circle";
   const hi = `Hi ${firstName(name)}`;
   const myCircles = { label: "See it in My Circles", url: `${CIRCLE_URL}#me` };
@@ -229,8 +229,8 @@ function listingStatus(to, name, d, status, note, { resubmitted = false } = {}) 
     needs_revision: {
       subject: `To revise: ${title}`,
       heading: "A few changes, then we're nearly there",
-      intro: `${hi}, the WIP team has read ${title} and would like a few changes before it goes live. Open it from My Circles, make the edits and send it back.`,
-      cta: { label: "Edit & resubmit", url: `${CIRCLE_URL}#me` },
+      intro: `${hi}, the WIP team has read ${title} and would like a few changes before it goes live. Open it from My Circles, check any edits we made, update what's flagged and send it back.`,
+      cta: { label: "Review & resubmit", url: `${CIRCLE_URL}#me` },
     },
     rejected: {
       subject: `Not approved: ${title}`,
@@ -251,10 +251,24 @@ function listingStatus(to, name, d, status, note, { resubmitted = false } = {}) 
     ...layout({
       ...copy,
       rows: eventRows(d),
-      note: status === "under_review" ? "" : note,
+      note: status === "under_review" ? "" : status === "needs_revision" ? revisionNote(note, revision) : note,
       noteLabel: status === "needs_revision" ? "What to revise" : "Note from the WIP team",
     }),
   };
+}
+
+// The change request in plain text: the WIP team's note, the fields they
+// flagged for the host, and the edits they already made for the host to check.
+function revisionNote(note, revision) {
+  const parts = note ? [note] : [];
+  const r = revision || {};
+  if (r.flags && r.flags.length) {
+    parts.push("Please rework:\n" + r.flags.map((f) => `• ${f.label}${f.note ? `: ${f.note}` : ""}`).join("\n"));
+  }
+  if (r.changes && r.changes.length) {
+    parts.push("We've edited these for you, please check them:\n" + r.changes.map((c) => `• ${c.label}: ${clip(c.field === "dateTime" ? when(c.to) : c.to, 160) || "(cleared)"}`).join("\n"));
+  }
+  return parts.join("\n\n");
 }
 
 function newCircle(member, d) {

@@ -67,6 +67,36 @@
   .attachgrid img { width: 110px; height: 110px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); display: block; }
   .attachgrid .pdf { width: 110px; height: 110px; border-radius: 10px; border: 1px solid var(--line); background: var(--accent-soft); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; gap: 4px; overflow: hidden; padding: 6px; text-align: center; }
   .attachgrid .cap { font-size: 10.5px; color: var(--muted); margin-top: 3px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Request changes: edit the proposal in place and flag fields for the host */
+  .rc { margin-top: 14px; border: 1.5px solid var(--ink); border-radius: var(--radius); background: var(--card); padding: 14px 16px; }
+  .rc h4 { font-size: 14px; }
+  .rc .rchelp { font-size: 12.5px; color: var(--muted-strong); margin: 4px 0 10px; line-height: 1.5; }
+  .rc details.rcsec { border-top: 1px solid var(--line-soft); padding: 8px 0; }
+  .rc details.rcsec > summary { cursor: pointer; font-weight: 700; font-size: 13px; display: flex; gap: 8px; align-items: center; padding: 4px 0; }
+  .rc .rcbadge { font-size: 10.5px; font-weight: 700; border-radius: var(--radius-pill); padding: 1px 8px; background: var(--accent-soft); }
+  .rc .rcbadge:empty { display: none; }
+  .rcrow { padding: 8px 0 8px 10px; border-left: 3px solid transparent; margin: 4px 0; }
+  .rcrow.changed { border-left-color: var(--good); background: rgba(42,111,43,.06); }
+  .rcrow.flagged { border-left-color: var(--warn); background: rgba(200,80,40,.06); }
+  .rcrow.changed.flagged { border-left-color: var(--warn); }
+  .rchead { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+  .rcflag { font-weight: 500; font-size: 12px; display: inline-flex; gap: 5px; align-items: center; cursor: pointer; color: var(--muted-strong); }
+  .rcrow input:not([type=checkbox]), .rcrow textarea, .rcrow select, .rc .rcnote { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 13px; background: #fff; }
+  .rcrow textarea, .rc .rcnote { resize: vertical; line-height: 1.45; }
+  .rcrow .rcflagnote { margin-top: 6px; border-color: var(--warn); }
+  .rcrow .rcwas { font-size: 11.5px; color: var(--muted); margin-top: 4px; white-space: pre-wrap; }
+  .rcrow .rcwas button { font-size: 11px; margin-left: 4px; }
+  .rcrow .rcro { font-size: 12.5px; color: var(--muted-strong); }
+  .rcfoot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .rcfoot .rcsum { font-size: 12px; color: var(--muted-strong); margin-right: auto; }
+  .rcerr { color: var(--warn); font-size: 12.5px; font-weight: 600; margin-top: 6px; min-height: 1em; }
+  .revbox { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; font-size: 12.5px; background: var(--accent-soft); }
+  .revbox h5 { font-size: 12.5px; margin: 8px 0 4px; }
+  .revbox h5:first-child { margin-top: 0; }
+  .revbox ul { margin: 0; padding-left: 18px; }
+  .revbox li { margin: 3px 0; }
+  .revbox .from { color: var(--muted); text-decoration: line-through; }
 </style>
 </head>
 <body class="theme-harmoni">
@@ -170,11 +200,12 @@ function proposalCard(ev) {
   const actions = [];
   if (ev.status === "under_review") {
     actions.push(`<button class="btn btn-banana btn-sm" onclick="setStatus('${esc(ev.id)}','approved')">Approve & publish</button>`);
-    actions.push(`<button class="btn btn-outline btn-sm" onclick="setStatus('${esc(ev.id)}','needs_revision')">Request changes…</button>`);
+    actions.push(`<button class="btn btn-outline btn-sm" onclick="openChanges('${esc(ev.id)}')">Request changes…</button>`);
     actions.push(`<button class="btn btn-outline btn-sm" onclick="setStatus('${esc(ev.id)}','rejected')">Reject…</button>`);
   }
   if (ev.status === "needs_revision") {
     actions.push(`<button class="btn btn-banana btn-sm" onclick="setStatus('${esc(ev.id)}','approved')">Approve as is</button>`);
+    actions.push(`<button class="btn btn-outline btn-sm" onclick="openChanges('${esc(ev.id)}')">Change the request…</button>`);
     actions.push(`<button class="btn btn-outline btn-sm" onclick="setStatus('${esc(ev.id)}','rejected')">Reject…</button>`);
   }
   if (ev.status === "approved") {
@@ -282,9 +313,11 @@ function proposalCard(ev) {
         }).join("")}</div>` : ""}
         ${finBlock(d.financials)}
         ${payBlock}
-        <div class="actions">${actions.join("")}
+        ${revisionBox(ev)}
+        <div class="actions" id="act_${esc(ev.id)}">${actions.join("")}
           ${ev.status !== "under_review" ? `<button class="btn btn-outline btn-sm" onclick="setStatus('${esc(ev.id)}','under_review')">→ Review</button>` : ""}
         </div>
+        <div id="rc_${esc(ev.id)}"></div>
       </div>
       <div>
         ${ev.status === "approved" || ev.status === "completed" ? `
@@ -298,7 +331,220 @@ function proposalCard(ev) {
   </details>`;
 }
 
+// ---------- Request changes ----------
+//
+// Instead of a one-line prompt, the admin gets the proposal as an editable
+// form. Edits are applied straight away (the host checks and accepts them
+// when they resubmit); a field can also be flagged with a note for the host
+// to rework themselves. Field keys and labels match REVISION_FIELDS in app.js.
+
+const RC_SECTIONS = [
+  ["Session identity", [
+    ["title", "Session title", "text"], ["coverImage", "Cover photo", "flag"], ["sessionType", "Session type", "text"],
+    ["audience", "Who it's for", "text"], ["dateTime", "Date & time", "datetime"], ["duration", "Duration", "text"]]],
+  ["The activity", [
+    ["coreActivity", "What participants will do", "long"], ["flow", "Session flow", "long"],
+    ["reference", "Reference link", "text"], ["attachments", "Photos / PDFs of past work", "flag"]]],
+  ["Location & logistics", [
+    ["venueMode", "In person / online", "mode"], ["venueName", "Venue", "text"], ["venueAddress", "Venue address", "text"],
+    ["venueNotes", "Venue booking notes", "long"], ["minCapacity", "Smallest group", "int"], ["capacity", "Largest group", "int"],
+    ["prep", "Setup & preparation", "long"]]],
+  ["Objectives & theme", [
+    ["takeaway", "What people walk away with", "long"], ["intention", "Deeper intention", "long"], ["theme", "Theme", "text"],
+    ["themeExplain", "Theme in their words", "long"], ["keyMessage", "Key message", "long"]]],
+  ["Materials & price", [
+    ["costs", "Materials & who provides them", "flag"], ["costPerParticipant", "Cost per person (RM)", "money"],
+    ["ticketPrice", "Ticket price (RM)", "money"], ["projectedAttendees", "Expected attendees", "int"]]],
+  ["Facilitation & reflection", [
+    ["opening", "Opening", "long"], ["instructions", "Step-by-step instructions", "long"], ["closing", "Closing", "long"],
+    ["prompts", "Reflection prompts", "long"]]],
+  ["Host's notes & contact", [
+    ["help", "Help needed", "long"], ["accessibility", "Accessibility", "long"], ["other", "Anything else", "long"],
+    ["contactName", "Contact name", "text"], ["contactEmail", "Contact email", "text"]]],
+];
+const RC_LABEL = Object.fromEntries(RC_SECTIONS.flatMap(([, rows]) => rows.map(([k, l]) => [k, l])));
+const MODES = { physical: "In person", online: "Online", hybrid: "Hybrid" };
+let EVENTS = [];
+
+// Stored value → what the input shows (dates in local datetime-local form).
+function rcValue(d, k, type) {
+  const v = d[k];
+  if (v === null || v === undefined) return "";
+  if (type === "datetime") {
+    const t = new Date(v);
+    return isNaN(t) ? "" : new Date(t - t.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  }
+  return String(v);
+}
+
+function rcShow(k, v) {
+  if (v === "" || v === null || v === undefined) return "(empty)";
+  if (k === "dateTime") return new Date(v).toLocaleString("en-MY", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+  if (k === "venueMode") return MODES[v] || v;
+  return String(v);
+}
+
+function rcRow(ev, [k, label, type], flags) {
+  const d = ev.data || {};
+  const val = rcValue(d, k, type);
+  const flag = flags[k];
+  let input = "";
+  if (type === "flag") {
+    const ro = k === "costs"
+      ? (d.costs || []).map((c) => `${c.item} (${c.who}, ${fmtRM(c.rm)})`).join(" · ") || "None listed"
+      : k === "coverImage" ? (d.coverImage ? "Photo uploaded" : "No photo, colour cover") : `${(d.attachments || []).length} file(s)`;
+    input = `<div class="rcro">${esc(ro)} <span class="muted">· only the host can change this, flag it to ask them</span></div>`;
+  } else if (type === "long") {
+    const rows = Math.min(8, Math.max(2, Math.ceil(val.length / 90) + (val.match(/\n/g) || []).length));
+    input = `<textarea data-edit rows="${rows}">${esc(val)}</textarea>`;
+  } else if (type === "mode") {
+    input = `<select data-edit>${Object.entries(MODES).map(([m, l]) => `<option value="${m}" ${val === m ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  } else {
+    const t = type === "datetime" ? 'type="datetime-local"' : type === "int" ? 'type="number" min="1" step="1"' : type === "money" ? 'type="number" min="0" step="0.01"' : 'type="text"';
+    input = `<input data-edit ${t} value="${esc(val)}">`;
+  }
+  return `<div class="rcrow ${flag ? "flagged" : ""}" data-field="${k}" data-type="${type}" data-orig="${esc(val)}">
+    <div class="rchead"><span>${esc(label)}</span>
+      <label class="rcflag"><input type="checkbox" data-flag ${flag ? "checked" : ""}> Ask host to revise</label></div>
+    ${input}
+    <div class="rcwas" hidden></div>
+    <input class="rcflagnote" data-flagnote placeholder="What should the host change here?" value="${esc(flag ? flag.note || "" : "")}" ${flag ? "" : "hidden"}>
+  </div>`;
+}
+
+function openChanges(id) {
+  const ev = EVENTS.find((e) => e.id === id);
+  const box = $("rc_" + id);
+  if (!ev || !box) return;
+  // Re-opening an existing request starts from what was asked last time.
+  const prev = ev.status === "needs_revision" && ev.revision ? ev.revision : null;
+  const flags = Object.fromEntries(((prev && prev.flags) || []).map((f) => [f.field, f]));
+  box.innerHTML = `<div class="rc" id="rcp_${esc(id)}">
+    <h4>✏️ Request changes from the host</h4>
+    <p class="rchelp">Fix small things yourself by editing a field (it turns green). The host sees each edit and accepts it when they resubmit.
+      For anything only the host can answer, tick <strong>Ask host to revise</strong> and say what you need (it turns orange).
+      Nothing is sent until you press <strong>Send to host</strong>.</p>
+    <label style="font-size:12.5px;font-weight:700">Note to the host <span class="muted" style="font-weight:400">(shown in My Circles and in their email)</span></label>
+    <textarea class="rcnote" data-note rows="3" placeholder="e.g. Lovely plan! A few tweaks before we publish…">${esc((prev && prev.note) || "")}</textarea>
+    ${RC_SECTIONS.map(([title, rows], i) => `<details class="rcsec" ${i === 0 ? "open" : ""}>
+      <summary>${esc(title)} <span class="rcbadge"></span></summary>
+      ${rows.map((r) => rcRow(ev, r, flags)).join("")}
+    </details>`).join("")}
+    <div class="rcerr" role="alert"></div>
+    <div class="rcfoot">
+      <span class="rcsum">No edits or flags yet.</span>
+      <button class="btn btn-outline btn-sm" onclick="closeChanges('${esc(id)}')">Cancel</button>
+      <button class="btn btn-banana btn-sm" onclick="sendChanges('${esc(id)}', this)">Send to host</button>
+    </div>
+  </div>`;
+  const panel = $("rcp_" + id);
+  panel.addEventListener("input", () => rcRefresh(panel));
+  panel.addEventListener("change", () => rcRefresh(panel));
+  panel.addEventListener("click", (e) => {
+    const undo = e.target.closest("[data-undo]");
+    if (!undo) return;
+    const row = undo.closest(".rcrow");
+    row.querySelector("[data-edit]").value = row.dataset.orig;
+    rcRefresh(panel);
+  });
+  // Flagged sections from an earlier request open up.
+  panel.querySelectorAll("details.rcsec").forEach((sec) => { if (sec.querySelector(".rcrow.flagged")) sec.open = true; });
+  rcRefresh(panel);
+  $("act_" + id).style.display = "none";
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeChanges(id) {
+  $("rc_" + id).innerHTML = "";
+  $("act_" + id).style.display = "";
+}
+
+// Mark changed/flagged rows, show "was: …" under edits, count per section.
+function rcRefresh(panel) {
+  let edits = 0, flags = 0;
+  panel.querySelectorAll("details.rcsec").forEach((sec) => {
+    let e = 0, f = 0;
+    sec.querySelectorAll(".rcrow").forEach((row) => {
+      const inp = row.querySelector("[data-edit]");
+      const changed = Boolean(inp) && inp.value.trim() !== row.dataset.orig.trim();
+      const flagged = row.querySelector("[data-flag]").checked;
+      row.classList.toggle("changed", changed);
+      row.classList.toggle("flagged", flagged);
+      row.querySelector("[data-flagnote]").hidden = !flagged;
+      const was = row.querySelector(".rcwas");
+      was.hidden = !changed;
+      if (changed) {
+        const orig = row.dataset.type === "datetime" && row.dataset.orig ? new Date(row.dataset.orig).toISOString() : row.dataset.orig;
+        was.innerHTML = `Was: ${esc(rcShow(row.dataset.field, orig))} <button type="button" class="btn btn-outline btn-sm mini" data-undo>Undo</button>`;
+      }
+      e += changed; f += flagged;
+    });
+    sec.querySelector(".rcbadge").textContent = [e && `${e} edited`, f && `${f} flagged`].filter(Boolean).join(" · ");
+    edits += e; flags += f;
+  });
+  panel.querySelector(".rcsum").textContent = edits || flags
+    ? `${edits} field${edits === 1 ? "" : "s"} edited · ${flags} flagged for the host`
+    : "No edits or flags yet.";
+}
+
+async function sendChanges(id, btn) {
+  const panel = $("rcp_" + id);
+  const err = panel.querySelector(".rcerr");
+  err.textContent = "";
+  const edits = {}, flags = {};
+  panel.querySelectorAll(".rcrow").forEach((row) => {
+    const k = row.dataset.field;
+    const inp = row.querySelector("[data-edit]");
+    if (inp && inp.value.trim() !== row.dataset.orig.trim()) {
+      edits[k] = row.dataset.type === "datetime" && inp.value ? new Date(inp.value).toISOString() : inp.value;
+    }
+    if (row.querySelector("[data-flag]").checked) flags[k] = row.querySelector("[data-flagnote]").value.trim();
+  });
+  const note = panel.querySelector("[data-note]").value.trim();
+  if (!note && !Object.keys(edits).length && !Object.keys(flags).length) {
+    err.textContent = "Edit a field, flag one for the host, or write a note so they know what to change.";
+    return;
+  }
+  const missing = Object.entries(flags).filter(([, v]) => !v).map(([k]) => RC_LABEL[k]);
+  if (missing.length && !note) {
+    err.textContent = `Say what to change for: ${missing.join(", ")} (or add a note to the host).`;
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+  try {
+    await api(`/api/admin/harmoni/events/${encodeURIComponent(id)}/request-changes`, {
+      method: "POST", body: JSON.stringify({ note, edits, flags }),
+    });
+    showDash();
+  } catch (e) {
+    err.textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = "Send to host";
+  }
+}
+
+// The last change request on a proposal, and what the host did with it.
+function revisionBox(ev) {
+  const r = ev.revision;
+  if (!r || !["under_review", "needs_revision"].includes(ev.status)) return "";
+  const dt = (s) => new Date(s).toLocaleString("en-MY", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  const changeList = (list) => `<ul>${list.map((c) => `<li><strong>${esc(c.label)}:</strong> <span class="from">${esc(rcShow(c.field, c.from))}</span> → ${esc(rcShow(c.field, c.to))}</li>`).join("")}</ul>`;
+  const asked = [
+    r.note ? `<h5>Note to host</h5><div class="note">${esc(r.note)}</div>` : "",
+    r.flags && r.flags.length ? `<h5>Flagged for the host (${r.flags.length})</h5><ul>${r.flags.map((f) => `<li><strong>${esc(f.label)}</strong>${f.note ? `: ${esc(f.note)}` : ""}</li>`).join("")}</ul>` : "",
+    r.changes && r.changes.length ? `<h5>Edited by WIP (${r.changes.length})</h5>${changeList(r.changes)}` : "",
+  ].join("");
+  const back = ev.status === "under_review" && r.resubmittedAt
+    ? `<h5>✅ Host resubmitted ${esc(dt(r.resubmittedAt))}</h5>${r.hostChanges && r.hostChanges.length
+        ? `<div class="muted">They accepted WIP's edits and changed:</div>${changeList(r.hostChanges)}`
+        : `<div class="muted">They accepted WIP's edits and changed nothing else.</div>`}`
+    : ev.status === "needs_revision" ? `<h5>⏳ Waiting on the host</h5><div class="muted">They can edit and resubmit from My Circles.</div>` : "";
+  return `<div class="revbox"><h5>Changes requested ${esc(dt(r.requestedAt))}</h5>${asked}${back}</div>`;
+}
+
 function render(events) {
+  EVENTS = events;
   const groups = [
     ["under_review", "Needs review", "proposals waiting for your decision"],
     ["needs_revision", "Waiting on the host", "changes requested; the host can edit and resubmit"],

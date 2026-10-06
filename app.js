@@ -1126,14 +1126,60 @@ app.post("/api/harmoni/events", requireMember, async (req, res) => {
 const REVISABLE = new Set(["needs_revision"]);
 const ownedBy = (ev, memberId) => Boolean(ev && ev.data && ev.data.createdBy && ev.data.createdBy.id === memberId);
 
+// Proposal fields the WIP team can edit directly or flag for the host when
+// asking for changes, in form order. Labels are what the host reads in My
+// Circles and in the email. Fields marked `flagOnly` can be flagged but not
+// edited by the admin (files and the materials list stay the host's).
+const REVISION_FIELDS = {
+  title: "Session title", coverImage: { label: "Cover photo", flagOnly: true }, sessionType: "Session type",
+  audience: "Who it's for", dateTime: "Date & time", duration: "Duration",
+  coreActivity: "What participants will do", flow: "Session flow", reference: "Reference link",
+  attachments: { label: "Photos / PDFs of past work", flagOnly: true },
+  venueMode: "In person / online", venueName: "Venue", venueAddress: "Venue address", venueNotes: "Venue booking notes",
+  minCapacity: "Smallest group", capacity: "Largest group", prep: "Setup & preparation",
+  takeaway: "What people walk away with", intention: "Deeper intention",
+  theme: "Theme", themeExplain: "Theme in their words", keyMessage: "Key message",
+  costs: { label: "Materials & who provides them", flagOnly: true }, costPerParticipant: "Cost per person (RM)",
+  ticketPrice: "Ticket price (RM)", projectedAttendees: "Expected attendees",
+  opening: "Opening", instructions: "Step-by-step instructions", closing: "Closing", prompts: "Reflection prompts",
+  help: "Help needed", accessibility: "Accessibility", other: "Anything else",
+  contactName: "Contact name", contactEmail: "Contact email",
+};
+const fieldLabel = (k) => (typeof REVISION_FIELDS[k] === "string" ? REVISION_FIELDS[k] : REVISION_FIELDS[k].label);
+const revisionValue = (d, k) => (d[k] === null || d[k] === undefined ? "" : k === "dateTime" ? d[k] : String(d[k]));
+
+// What changed between two versions of a proposal, as [{ field, label, from, to }],
+// over the fields WIP and the host both edit as text.
+function proposalDiff(before, after) {
+  return Object.keys(REVISION_FIELDS)
+    .filter((k) => typeof REVISION_FIELDS[k] === "string" && revisionValue(before, k) !== revisionValue(after, k))
+    .map((k) => ({ field: k, label: fieldLabel(k), from: revisionValue(before, k), to: revisionValue(after, k) }));
+}
+
+// A stored proposal back into the shape buildProposal takes, so an edited copy
+// goes through exactly the same checks as the host's own submission.
+function proposalBody(d) {
+  const { rsvps, comments, financials, createdBy, paymentUrl, announcedAt, remindersSent, resubmittedAt, revision, cover, ...rest } = d;
+  return { ...rest, coverId: cover && cover.id, safeguarding: true };
+}
+
+// Bookkeeping the proposal form doesn't own, carried from the old version.
+function carryOver(old, data) {
+  data.createdBy = old.createdBy;
+  data.rsvps = Array.isArray(old.rsvps) ? old.rsvps : [];
+  data.comments = Array.isArray(old.comments) ? old.comments : [];
+  for (const k of ["paymentUrl", "announcedAt", "remindersSent", "resubmittedAt", "revision"]) if (old[k]) data[k] = old[k];
+  return data;
+}
+
 app.get("/api/harmoni/events/:id/edit", requireMember, async (req, res) => {
   try {
     const events = await storage.loadEvents();
     const ev = events.find((e) => e.id === req.params.id);
     if (!ownedBy(ev, req.member.id)) return res.status(404).json({ error: "Proposal not found" });
     if (!REVISABLE.has(ev.status)) return res.status(400).json({ error: "This proposal can't be edited right now" });
-    const { rsvps, comments, financials, createdBy, paymentUrl, announcedAt, remindersSent, resubmittedAt, ...proposal } = ev.data;
-    res.json({ proposal, adminNote: adminNote(ev) });
+    const { rsvps, comments, financials, createdBy, paymentUrl, announcedAt, remindersSent, resubmittedAt, revision, ...proposal } = ev.data;
+    res.json({ proposal, adminNote: adminNote(ev), revision: revision || null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1151,14 +1197,15 @@ app.put("/api/harmoni/events/:id", requireMember, async (req, res) => {
     if (!REVISABLE.has(record.status)) return res.status(400).json({ error: "This proposal can't be edited right now" });
 
     const old = record.data;
-    const data = buildProposal(req.body || {});
-    data.createdBy = old.createdBy;
-    data.rsvps = Array.isArray(old.rsvps) ? old.rsvps : [];
-    data.comments = Array.isArray(old.comments) ? old.comments : [];
-    for (const k of ["paymentUrl", "announcedAt", "remindersSent"]) if (old[k]) data[k] = old[k];
+    const data = carryOver(old, buildProposal(req.body || {}));
     data.resubmittedAt = new Date().toISOString();
     record.data = data;
     record.status = "under_review";
+    // What the host changed on top of the version WIP sent back, so the
+    // admin can see whether the flagged points were dealt with.
+    if (data.revision) {
+      data.revision = { ...data.revision, resubmittedAt: data.resubmittedAt, hostChanges: proposalDiff(old, data) };
+    }
 
     await storage.updateEvent(index, record);
     if (notify.wants(req.member, "listing")) {
@@ -1390,6 +1437,7 @@ app.get("/api/admin/harmoni/events", requireAdmin, async (req, res) => {
           adminNote: adminNote(ev),
           decidedAt: ev.decidedAt || null,
           decidedBy: ev.decidedBy || null,
+          revision: (ev.data && ev.data.revision) || null,
           data: ev.data,
         }))
         .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)),
@@ -1473,6 +1521,10 @@ app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) 
     if (typeof req.body.note === "string") {
       record.adminNote = req.body.note.trim().slice(0, 300) || null;
     }
+    // A note-only change request (no edits or flagged fields).
+    if (target === "needs_revision") {
+      record.data.revision = { requestedAt: record.decidedAt, note: record.adminNote, changes: [], flags: [] };
+    }
     // A Circle is announced to members once, the first time it goes live, so
     // a re-open after "completed" or a trip back through review doesn't
     // announce it again.
@@ -1484,6 +1536,72 @@ app.post("/api/admin/harmoni/events/:id/status", requireAdmin, async (req, res) 
     res.json({ ok: true, status: record.status });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// "Request changes" with the proposal in hand: the WIP team edits fields
+// directly (applied now, the host reviews and accepts them when resubmitting)
+// and/or flags fields for the host to rework, plus an overall note. Body:
+// { note, edits: { field: value }, flags: { field: "what to change" } }.
+app.post("/api/admin/harmoni/events/:id/request-changes", requireAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const note = typeof b.note === "string" ? b.note.trim().slice(0, 1000) : "";
+    const edits = b.edits && typeof b.edits === "object" ? b.edits : {};
+    const flagsIn = b.flags && typeof b.flags === "object" ? b.flags : {};
+    for (const k of Object.keys(edits)) {
+      if (!REVISION_FIELDS[k] || typeof REVISION_FIELDS[k] !== "string") throw new Error(`"${k}" can't be edited here`);
+    }
+    const flags = Object.keys(flagsIn).map((k) => {
+      if (!REVISION_FIELDS[k]) throw new Error(`"${k}" isn't a proposal field`);
+      return { field: k, label: fieldLabel(k), note: typeof flagsIn[k] === "string" ? flagsIn[k].trim().slice(0, 500) : "" };
+    });
+
+    const events = await storage.loadEvents();
+    const index = events.findIndex((ev) => ev.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: "Event not found" });
+    const record = events[index];
+    if (!["under_review", "needs_revision"].includes(record.status)) {
+      return res.status(400).json({ error: "Only proposals in review can be sent back for changes" });
+    }
+
+    const old = record.data;
+    let data = old;
+    let changes = [];
+    if (Object.keys(edits).length) {
+      // Same checks as the host's own form, so WIP can't save a proposal the
+      // host couldn't have sent.
+      data = carryOver(old, buildProposal({ ...proposalBody(old), ...edits }));
+      changes = proposalDiff(old, data);
+    }
+    // Updating a request the host hasn't answered yet: edits made last time
+    // are already in the proposal, so keep them listed (from the host's
+    // original value) alongside any new ones.
+    const pending = record.status === "needs_revision" && old.revision && !old.revision.resubmittedAt ? old.revision.changes || [] : [];
+    if (pending.length) {
+      const merged = pending.map((c) => {
+        const now = changes.find((n) => n.field === c.field);
+        return now ? { ...c, to: now.to } : c;
+      });
+      changes = merged.concat(changes.filter((n) => !pending.some((c) => c.field === n.field))).filter((c) => c.from !== c.to);
+    }
+    if (!note && !flags.length && !changes.length) {
+      return res.status(400).json({ error: "Edit a field, flag one for the host, or add a note so the host knows what to change" });
+    }
+
+    const previous = record.status;
+    record.data = data;
+    record.status = "needs_revision";
+    record.decidedAt = new Date().toISOString();
+    record.decidedBy = "admin";
+    record.adminNote = note || null;
+    // Kept inside data: the Supabase mirror only stores the fixed columns.
+    data.revision = { requestedAt: record.decidedAt, note: note || null, changes, flags };
+    await storage.updateEvent(index, record);
+    if (previous !== "needs_revision" || changes.length || flags.length) await notifyStatusChange(record, previous, false);
+    res.json({ ok: true, status: record.status, changes: changes.length, flags: flags.length });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 
@@ -1501,7 +1619,8 @@ async function notifyStatusChange(record, previous, announce) {
     const tellHost = LISTING_EMAILS.has(record.status) && !(record.status === "approved" && previous === "completed");
     // Pre-account proposals have no member record, so no settings to respect.
     if (tellHost && d.createdBy && d.createdBy.email && (!host || notify.wants(host, "listing"))) {
-      await notify.send(notify.listingStatus(d.createdBy.email, d.createdBy.name, d, record.status, adminNote(record)));
+      const revision = record.status === "needs_revision" ? d.revision : null;
+      await notify.send(notify.listingStatus(d.createdBy.email, d.createdBy.name, d, record.status, adminNote(record), { revision }));
     }
     if (announce) {
       await notify.sendMany(

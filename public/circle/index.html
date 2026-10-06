@@ -312,6 +312,17 @@
   .youre.wait { background: #FFF1C2; }
   .youre.maybe { background: var(--stone); }
   .linkbtn { background: none; border: 0; padding: 0; font: inherit; font-size: .84rem; font-weight: 600; color: var(--forest); text-decoration: underline; cursor: pointer; }
+  .revnote { border: 1.5px solid var(--ink); border-radius: 14px; padding: 8px 12px; font-size: .86rem; line-height: 1.5; margin: 0 0 12px; white-space: pre-wrap; }
+  .revnote.flag { background: #FFE2D6; }
+  .revnote.edit { background: var(--banana-pastel); }
+  .q.revflag { box-shadow: 0 0 0 3px #FF9F7A; }
+  .revlist { list-style: none; padding: 0; margin: 8px 0 14px; display: grid; gap: 8px; }
+  .revlist li { border: 1.5px solid var(--ink); border-radius: 14px; padding: 8px 12px; font-size: .88rem; line-height: 1.45; display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+  .revlist li.flag { background: #FFE2D6; }
+  .revlist li.edit { background: var(--banana-pastel); }
+  .revlist .was { color: var(--muted, #6e6e73); text-decoration: line-through; }
+  .revlist .linkbtn { white-space: nowrap; }
+  .revh { font-size: 1rem; margin: 14px 0 0; }
   .hostnote { background: var(--banana-pastel); border: 1.5px solid var(--ink); border-radius: 16px; padding: 10px 14px; font-weight: 600; font-size: .9rem; margin-bottom: 12px; }
 
   /* ── Fields ── */
@@ -1308,7 +1319,7 @@ function renderMe() {
         p.status === "approved" && p.past ? "completed" : p.status,
         (p.status === "approved" || p.status === "completed" ? `<span class="note">${p.goingCount} ${p.past ? "attended" : "going"}</span>` : "") +
         (p.adminNote ? `<span class="note">WIP team: ${esc(p.adminNote)}</span>` : "") +
-        (p.status === "needs_revision" ? `<span class="note"><button type="button" class="linkbtn" onclick="editProposal('${esc(p.id)}')">Edit &amp; resubmit →</button></span>` : ""))).join("")
+        (p.status === "needs_revision" ? `<span class="note"><button type="button" class="linkbtn" onclick="editProposal('${esc(p.id)}')">Review changes &amp; resubmit →</button></span>` : ""))).join("")
     : `<div class="emptyline">You haven't proposed a Circle yet. <a href="#" onclick="showForm();return false">Design one →</a></div>`;
 
   const past = activity.joined.filter((j) => j.past && j.rsvp === "going" && !j.waitlisted);
@@ -2020,7 +2031,7 @@ const REVIEW = STEPS.length + 1; // step number of the "check & send" screen
 const WHO = { host: "Host", circle: "WIP", participants: "Participants" };
 
 let F = null;          // answers in progress
-let EDIT = null;       // { id, note } while revising a proposal the WIP team sent back
+let EDIT = null;       // { id, note, revision } while revising a proposal the WIP team sent back
 let wizStep = 0;       // 0 = "before you start", 1..STEPS.length, REVIEW
 let resumeStep = 0;    // where a saved draft left off
 const UNDO = {};       // one level of undo per question after a draft/example fills it
@@ -2041,7 +2052,10 @@ function blankAnswers() {
 
 // ----- saving on this device -----
 
-const draftKey = () => "harmoniDraft:" + (ME ? ME.member.id : "anon") + (EDIT ? ":edit:" + EDIT.id : "");
+// A revision's draft is tied to the request it answers, so a newer request
+// (with fresh WIP edits) isn't hidden under answers saved for an older one.
+const draftKey = () => "harmoniDraft:" + (ME ? ME.member.id : "anon")
+  + (EDIT ? ":edit:" + EDIT.id + (EDIT.revision && EDIT.revision.requestedAt ? ":" + EDIT.revision.requestedAt : "") : "");
 
 function loadDraft() {
   try { return JSON.parse(localStorage.getItem(draftKey()) || "null"); } catch { return null; }
@@ -2073,7 +2087,7 @@ function saveForLater() {
   try { localStorage.setItem(draftKey(), JSON.stringify({ F, step: wizStep, at: Date.now() })); } catch {}
   showHub().then(() => {
     $("eventList").insertAdjacentHTML("beforebegin",
-      `<div class="youre" id="laterNote" style="margin-bottom:16px"><span>✓ Your proposal is saved on this device. Pick it up any time from ${EDIT ? '"Edit &amp; resubmit" in My Circles' : '"Propose a Circle"'}.</span></div>`);
+      `<div class="youre" id="laterNote" style="margin-bottom:16px"><span>✓ Your proposal is saved on this device. Pick it up any time from ${EDIT ? '"Review changes &amp; resubmit" in My Circles' : '"Propose a Circle"'}.</span></div>`);
     setTimeout(() => { const n = $("laterNote"); if (n) n.remove(); }, 8000);
   });
 }
@@ -2100,7 +2114,7 @@ async function editProposal(id) {
   try {
     d = await api(`/api/harmoni/events/${encodeURIComponent(id)}/edit`);
   } catch (e) { return alert(e.message); }
-  EDIT = { id, note: d.adminNote };
+  EDIT = { id, note: d.adminNote, revision: d.revision };
   const saved = loadDraft();
   F = saved ? { ...blankAnswers(), ...saved.F } : answersFromProposal(d.proposal);
   resumeStep = saved && saved.step > 0 ? Math.min(saved.step, REVIEW) : 0;
@@ -2172,10 +2186,11 @@ function introHTML() {
   if (EDIT) return `<div class="wiz-head">
       <span class="eyebrow"><i></i> Changes requested</span>
       <h1 id="wizH" tabindex="-1" style="margin-top:12px">Revise your <span class="swash">Circle<svg viewBox="0 0 200 24" preserveAspectRatio="none" aria-hidden="true"><use href="#d-swash"/></svg></span></h1>
-      <p>Your answers are filled in. Change what's needed, then send it back for review.</p>
+      <p>Your answers are filled in, with the WIP team's edits already made. Check their edits, update anything they flagged, then send it back. Sending it back means you're happy with the edits.</p>
     </div>
     <div class="q">
       ${EDIT.note ? `<div class="hostnote">What the WIP team asked: ${esc(EDIT.note)}</div>` : ""}
+      ${revisionListHTML()}
       <div class="resume">
         <button type="button" class="btn btn-ink btn-pop" onclick="wizGoto(${resumeStep || REVIEW})">${resumeStep ? "Continue where you left off →" : "Go to my answers →"}</button>
       </div>
@@ -2198,6 +2213,50 @@ function introHTML() {
           <button type="button" class="btn btn-line" onclick="startOver()">Start a new one</button>
         </div>` : ""}
     </div>`;
+}
+
+// ----- the WIP team's change request, shown while revising -----
+
+// Which question a revised field lives on (both group sizes share one).
+const revQid = (field) => (field === "minCapacity" ? "capacity" : field);
+const stepOfField = (field) => STEPS.findIndex((s) => s.qs.some((q) => q.id === revQid(field))) + 1;
+
+function revShow(field, v) {
+  if (v === "" || v === null || v === undefined) return "(empty)";
+  if (field === "dateTime") {
+    const t = new Date(v);
+    return isNaN(t) ? v : t.toLocaleString("en-MY", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  }
+  if (field === "venueMode") return { physical: "In person", online: "Online", hybrid: "Both" }[v] || v;
+  return String(v);
+}
+
+function revisionListHTML() {
+  const r = EDIT && EDIT.revision;
+  if (!r) return "";
+  const go = (field) => `<button type="button" class="linkbtn" onclick="wizGoto(${stepOfField(field)})">Go to it →</button>`;
+  const flags = r.flags || [], changes = r.changes || [];
+  return `${flags.length ? `<h3 class="revh">Please update (${flags.length})</h3>
+      <ul class="revlist">${flags.map((f) => `<li class="flag"><span><strong>${esc(f.label)}</strong>${f.note ? `<br>${esc(f.note)}` : ""}</span>${go(f.field)}</li>`).join("")}</ul>` : ""}
+    ${changes.length ? `<h3 class="revh">Edited for you by the WIP team (${changes.length})</h3>
+      <ul class="revlist">${changes.map((c) => `<li class="edit"><span><strong>${esc(c.label)}</strong><br>
+        <span class="was">${esc(revShow(c.field, c.from))}</span> → ${esc(revShow(c.field, c.to))}</span>${go(c.field)}</li>`).join("")}</ul>
+      <p class="qhelp">Not happy with an edit? Change it back on that step. Anything you send is reviewed again.</p>` : ""}`;
+}
+
+// The note above a question the WIP team flagged or edited.
+function revisionNoteHTML(q) {
+  const r = EDIT && EDIT.revision;
+  if (!r) return "";
+  const ids = (f) => revQid(f.field) === q.id;
+  const flags = (r.flags || []).filter(ids), changes = (r.changes || []).filter(ids);
+  return flags.map((f) => `<div class="revnote flag">🔶 <strong>The WIP team asks you to update this${flags.length > 1 || f.field !== q.id ? ` (${esc(f.label)})` : ""}.</strong>${f.note ? ` ${esc(f.note)}` : ""}</div>`).join("")
+    + changes.map((c) => `<div class="revnote edit">✏️ <strong>The WIP team edited ${changes.length > 1 || c.field !== q.id ? esc(c.label.toLowerCase()) : "this"}.</strong> It was: ${esc(revShow(c.field, c.from))}</div>`).join("");
+}
+
+function revFlagged(q) {
+  const r = EDIT && EDIT.revision;
+  return Boolean(r && (r.flags || []).some((f) => revQid(f.field) === q.id));
 }
 
 function stepHTML(step) {
@@ -2260,7 +2319,7 @@ function qHTML(q) {
         <button type="button" class="btn btn-line btn-sm addbtn" data-cost-add>＋ Add an item</button>`;
       break;
     case "check":
-      return `<div class="q" id="q_${q.id}"><label class="ack"><input type="checkbox" data-q="${q.id}" id="in_${q.id}" ${v ? "checked" : ""}>
+      return `<div class="q" id="q_${q.id}">${revisionNoteHTML(q)}<label class="ack"><input type="checkbox" data-q="${q.id}" id="in_${q.id}" ${v ? "checked" : ""}>
           <span>${esc(q.label)} ${badge(q)}</span></label><div class="qerr" id="err_${q.id}" role="alert"></div></div>`;
     case "cover":
       field = coverFieldHTML();
@@ -2274,7 +2333,8 @@ function qHTML(q) {
       break;
   }
   const labelFor = ["choice", "range", "lines", "costs", "cover", "files"].includes(q.type) ? "" : `for="in_${q.id}"`;
-  return `<div class="q" id="q_${q.id}">
+  return `<div class="q ${revFlagged(q) ? "revflag" : ""}" id="q_${q.id}">
+      ${revisionNoteHTML(q)}
       <label class="qlabel" ${labelFor}>${esc(q.label)} ${badge(q)}</label>
       ${q.help ? `<p class="qhelp">${esc(q.help)}</p>` : ""}
       ${field}
