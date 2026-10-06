@@ -46,6 +46,16 @@ const NAV_CSS = `<style>
 @media (max-width:767px){.kb-navigation > .menu-item:not([class*="kb-nav-link-"]) > .kb-link-wrap.kb-link-wrap.kb-link-wrap.kb-link-wrap{--kb-nav-link-align:left;--kb-nav-link-flex-justify:start;--kb-nav-link-media-container-align-self:start}}
 </style>`;
 
+// Homepage testimonials: the bottom-right card's only content was a background
+// photo (uploads/2026/01/Testimonial-side.webp) that was deleted from WordPress,
+// leaving an empty box. Hide that column while it is empty and let the
+// Anonymous quote take the full row. Keyed on :empty, so if the card gets
+// content in WordPress again it reappears on the next mirror.
+const HOME_CSS = `<style>
+.wp-block-kadence-column.kadence-column1204_b826b1-7f:has(> .kt-inside-inner-col:empty){display:none!important}
+.kb-row-layout-wrap.kb-row-layout-id1204_0e2fb7-2d > .kt-row-column-wrap:has(> .kadence-column1204_b826b1-7f > .kt-inside-inner-col:empty){grid-template-columns:minmax(0,1fr)}
+</style>`;
+
 const wrap = (name, html) => `<!--wip:add:${name}-->${html}<!--/wip:add:${name}-->`;
 
 function strip(html) {
@@ -132,6 +142,7 @@ function addToPage(html, { home }) {
       // so adding one here would grow the page by a blank line per run.
       html = html.slice(0, at) + "\n" + block + html.slice(at);
     }
+    html = html.replace("</head>", wrap("home-style", HOME_CSS) + "\n</head>");
   }
   return [html, missed];
 }
