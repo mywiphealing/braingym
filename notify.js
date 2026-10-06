@@ -8,7 +8,12 @@
 //
 // Without RESEND_API_KEY nothing is sent; each attempt is logged and skipped.
 
-const API_KEY = process.env.RESEND_API_KEY;
+const API_KEY = (process.env.RESEND_API_KEY || "").trim();
+// A Resend key is one token like "re_AbC123…". Anything else (a pasted code
+// sample, quotes, "Bearer …") would only fail later with a confusing error.
+const KEY_PROBLEM = API_KEY && !/^re_[A-Za-z0-9_-]+$/.test(API_KEY)
+  ? "RESEND_API_KEY doesn't look like a Resend key. In Vercel it should be only the key, one line starting with re_ (no quotes, spaces or code)"
+  : null;
 const FROM = process.env.NOTIFY_FROM || "WIP Healing <hello@mywiphealing.com>";
 // The www host is the one Supabase Auth redirects back to (see README).
 const SITE_URL = (process.env.SITE_URL || "https://www.mywiphealing.com").replace(/\/+$/, "");
@@ -70,6 +75,10 @@ async function sendReport(msg) {
     console.log(`Email skipped (RESEND_API_KEY not set): "${msg.subject}"`);
     return { sent: false, to, error: "RESEND_API_KEY is not set on this deployment" };
   }
+  if (KEY_PROBLEM) {
+    console.error(`Email "${msg.subject}" not sent: ${KEY_PROBLEM}`);
+    return { sent: false, to, error: KEY_PROBLEM };
+  }
   try {
     await post("/emails", { from: FROM, ...msg });
     console.log(`Email sent: "${msg.subject}" to ${to}`);
@@ -87,6 +96,10 @@ async function sendMany(msgs) {
   if (!list.length) return [];
   if (!enabled) {
     console.log(`${list.length} email(s) skipped (RESEND_API_KEY not set): "${list[0].subject}"`);
+    return [];
+  }
+  if (KEY_PROBLEM) {
+    console.error(`${list.length} email(s) "${list[0].subject}" not sent: ${KEY_PROBLEM}`);
     return [];
   }
   const sent = [];
