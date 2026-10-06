@@ -20,7 +20,7 @@ const enabled = Boolean(API_KEY);
 // ---------- preferences ----------
 
 // What a member can switch off from their profile. Missing keys mean "on".
-const NOTIFY_KEYS = ["rsvp", "listing", "newEvents", "reminders"];
+const NOTIFY_KEYS = ["rsvp", "listing", "newEvents", "reminders", "surveys"];
 
 function prefs(member) {
   const n = (member && member.data && member.data.notify) || {};
@@ -287,8 +287,26 @@ function reminder(member, d, r) {
   };
 }
 
+// After a Circle: a link to the impact survey, signed for this member and
+// Circle so their answers can show up in their own progress view.
+function surveyInvite(member, d, surveyUrl) {
+  const title = d.title || "your Circle";
+  return {
+    to: member.email,
+    ...layout({
+      subject: `How was it? ${title}`,
+      heading: "How was your Circle?",
+      intro: `Hi ${firstName(member.name)}, thank you for coming to ${title}. Would you share how it went? It's a short chat with Seni, our survey guide, and takes about 5 minutes.`,
+      rows: eventRows(d),
+      cta: { label: "Share how it went", url: surveyUrl },
+      outro: "Your answers help the WIP team shape future Circles, and they build your own progress view in My Circles. Only you and the WIP team see your answers.",
+    }),
+  };
+}
+
 module.exports = {
   enabled,
+  SITE_URL,
   CIRCLE_URL,
   NOTIFY_KEYS,
   prefs,
@@ -300,4 +318,5 @@ module.exports = {
   listingStatus,
   newCircle,
   reminder,
+  surveyInvite,
 };

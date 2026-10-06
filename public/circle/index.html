@@ -251,6 +251,8 @@
   .roles button:nth-child(1)[aria-pressed="true"] { background: var(--pink); }
   .roles button:nth-child(2)[aria-pressed="true"] { background: var(--mint); }
   .roles button:nth-child(3)[aria-pressed="true"] { background: var(--sky); }
+  .roles button:nth-child(4)[aria-pressed="true"] { background: var(--lavender); }
+  .roles button:nth-child(5)[aria-pressed="true"] { background: var(--banana-pastel); }
   .roles .tick { width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px; border: 1.5px solid var(--ink); background: var(--white); display: grid; place-items: center; font-weight: 800; font-size: 14px; margin-top: 1px; }
   .roles button[aria-pressed="true"] .tick::after { content: '✓'; }
   .roles b { display: block; font-family: var(--font-display); font-size: 1.05rem; }
@@ -278,6 +280,28 @@
   .notif input { margin-top: 2px; }
   .notif b { display: block; font-size: .95rem; }
   .notif small { display: block; color: var(--muted-strong); font-size: .84rem; }
+  /* ── My progress ── */
+  .progcard { background: var(--white); border: 1.5px solid var(--ink); border-radius: 22px; padding: 18px 20px; }
+  .progcard .trend { width: 100%; height: auto; display: block; margin: 6px 0 4px; }
+  .progcard .trend text { font: 600 11px Inter, system-ui, sans-serif; fill: rgba(29,29,31,.6); }
+  .progcard h3 { font-size: 1.05rem; font-weight: 800; }
+  .progcard .lede { color: var(--muted-strong); font-size: .9rem; margin-top: 2px; }
+  .progentry { border-top: 1px solid var(--line-soft); padding: 12px 0 4px; }
+  .progentry b { font-family: var(--font-display); }
+  .progentry small { color: var(--muted); font-size: .8rem; }
+  .bars { display: grid; gap: 6px; margin-top: 8px; }
+  .bar { display: grid; grid-template-columns: minmax(0, 1fr) 120px 26px; gap: 10px; align-items: center; font-size: .84rem; }
+  .bar .track { height: 10px; border-radius: 99px; background: var(--stone); border: 1px solid var(--line); overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--leaf); }
+  .bar .fill.low { background: var(--pink-doodle); }
+  .bar .v { font-family: var(--font-mono, monospace); font-weight: 700; text-align: right; }
+  @media (max-width: 480px) { .bar { grid-template-columns: minmax(0, 1fr) 70px 22px; } }
+  .private { font-size: .84rem; color: var(--muted-strong); margin-top: 12px; }
+  .surveybtn { display: inline-block; margin-top: 4px; font-size: .84rem; }
+  .pwform { display: grid; gap: 10px; max-width: 420px; margin-top: 14px; }
+  .pwrow { position: relative; }
+  .pwrow input { padding-right: 70px !important; }
+  .pwrow .showpw { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
   .profcard .who { font-size: .86rem; color: var(--muted-strong); margin-top: 14px; }
 
   /* ── RSVP state ── */
@@ -733,10 +757,14 @@
     <div class="m m-reset">
       <p class="lede">Choose a new password for your account.</p>
       <form onsubmit="event.preventDefault(); saveNewPassword()">
-        <label for="a_newpw" class="sr">New password</label>
-        <input id="a_newpw" type="password" placeholder="New password (8+ characters)" minlength="8" autocomplete="new-password" required>
-        <button class="btn btn-ink btn-lg btn-pop">Save password</button>
+        <div class="pwrow"><label for="a_newpw" class="sr">New password</label>
+          <input id="a_newpw" type="password" placeholder="New password (8+ characters)" minlength="8" autocomplete="new-password" required>
+          <button type="button" class="linkbtn showpw" onclick="togglePwVisible(this, 'a_newpw', 'a_newpw2')">Show</button></div>
+        <label for="a_newpw2" class="sr">Confirm new password</label>
+        <input id="a_newpw2" type="password" placeholder="Type it again" minlength="8" autocomplete="new-password" required>
+        <button class="btn btn-ink btn-lg btn-pop" id="resetBtn">Save password</button>
       </form>
+      <div class="gate-links"><a href="#" onclick="setMode('forgot');return false">Link not working? Request a new one</a></div>
     </div>
 
     <div class="m m-invite">
@@ -813,14 +841,28 @@
   </div></div>
   <div class="mylist" id="mePast"></div>
 
+  <div class="sechead"><div>
+    <h2><svg viewBox="0 0 100 100" aria-hidden="true"><use href="#d-sparkle"/></svg> My progress</h2>
+    <p>How you've been feeling after your Circles, from the surveys you've shared.</p>
+  </div></div>
+  <div class="progcard" id="meProgress"><div class="emptyline">Loading…</div></div>
+
   <div class="sechead"><div><h2>Your profile</h2></div></div>
   <div class="panel profcard">
     <div id="meProfile"></div>
     <div class="who" id="meWho"></div>
     <div class="profcard-actions">
       <button class="btn btn-ink btn-sm" onclick="showProfile(false)">Edit profile</button>
+      <button class="btn btn-line btn-sm" onclick="togglePwForm()">Change password</button>
       <button class="btn btn-line btn-sm" onclick="signOut()">Log out</button>
     </div>
+    <form class="pwform" id="pwForm" hidden onsubmit="event.preventDefault(); changePassword()">
+      <p class="qhelp" style="margin:0">Choose a new password (8 or more characters). If you usually sign in with Google, this adds a password you can use too.</p>
+      <div class="pwrow"><label for="p_newpw" class="sr">New password</label><input id="p_newpw" type="password" placeholder="New password" minlength="8" autocomplete="new-password" required><button type="button" class="linkbtn showpw" onclick="togglePwVisible(this, 'p_newpw', 'p_newpw2')">Show</button></div>
+      <div class="pwrow"><label for="p_newpw2" class="sr">Confirm new password</label><input id="p_newpw2" type="password" placeholder="Type it again" minlength="8" autocomplete="new-password" required></div>
+      <div class="qerr" id="pwMsg" role="status"></div>
+      <div><button class="btn btn-ink btn-sm" id="pwSave">Save new password</button></div>
+    </form>
   </div>
 </div>
 
@@ -959,16 +1001,88 @@ async function emailAuth() {
 
 async function sendReset() {
   const email = $("f_resetEmail").value.trim();
-  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: RETURN_TO });
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: RETURN_TO + "?reset=1" });
   if (error) return gateError(error);
   $("sentMsg").textContent = `If ${email} has an account, a reset link is on its way.`;
   setMode("sent");
 }
 
+const RESET_EXPIRED = "That reset link has expired or was already used. Enter your email and we'll send you a new one.";
+
+// Both new-password forms check the same things before calling Supabase.
+function newPasswordProblem(pw, again) {
+  if (pw.length < 8) return "Use at least 8 characters.";
+  if (pw !== again) return "The two passwords don't match. Try typing them again.";
+  return "";
+}
+
+function togglePwVisible(btn, ...ids) {
+  const showing = $(ids[0]).type === "text";
+  ids.forEach((id) => { $(id).type = showing ? "password" : "text"; });
+  btn.textContent = showing ? "Show" : "Hide";
+}
+
+// A short confirmation at the top of whatever view is showing.
+function flash(text) {
+  const view = document.querySelector(".view.on");
+  if (!view) return;
+  const old = $("flashNote");
+  if (old) old.remove();
+  view.insertAdjacentHTML("afterbegin", `<div class="youre" id="flashNote" role="status" style="margin-bottom:16px"><span>${esc(text)}</span></div>`);
+  setTimeout(() => { const n = $("flashNote"); if (n) n.remove(); }, 8000);
+}
+
+// From the reset email: the link signs them in for this one purpose, then
+// the new password is saved on that session.
 async function saveNewPassword() {
-  const { error } = await sb.auth.updateUser({ password: $("a_newpw").value });
-  if (error) return gateError(error);
-  await enter();
+  const problem = newPasswordProblem($("a_newpw").value, $("a_newpw2").value);
+  if (problem) return gateError(new Error(problem));
+  $("resetBtn").disabled = true;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return setMode("forgot", RESET_EXPIRED);
+    const { error } = await sb.auth.updateUser({ password: $("a_newpw").value });
+    if (error) throw error;
+    history.replaceState(null, "", RETURN_TO);
+    $("a_newpw").value = $("a_newpw2").value = "";
+    await enter();
+    flash("✓ Your new password is saved, and you're signed in.");
+  } catch (e) {
+    if (/session|expired|invalid.*(token|link)/i.test(e.message || "")) setMode("forgot", RESET_EXPIRED);
+    else gateError(e);
+  } finally {
+    $("resetBtn").disabled = false;
+  }
+}
+
+// From My Circles, already signed in. Also how Google or magic-link members
+// add a password to their account.
+function togglePwForm() {
+  const f = $("pwForm");
+  f.hidden = !f.hidden;
+  $("pwMsg").textContent = "";
+  if (!f.hidden) $("p_newpw").focus();
+}
+
+async function changePassword() {
+  const msg = $("pwMsg");
+  msg.style.color = "";
+  const problem = newPasswordProblem($("p_newpw").value, $("p_newpw2").value);
+  if (problem) { msg.textContent = problem; return; }
+  $("pwSave").disabled = true;
+  try {
+    const { error } = await sb.auth.updateUser({ password: $("p_newpw").value });
+    if (error) throw error;
+    $("p_newpw").value = $("p_newpw2").value = "";
+    $("pwForm").hidden = true;
+    flash("✓ Your new password is saved. Use it next time you sign in with email.");
+  } catch (e) {
+    msg.textContent = /reauth/i.test(e.message || "")
+      ? "For your security, please sign out and use \"Forgot password?\" on the sign-in page to set a new one."
+      : e.message || String(e);
+  } finally {
+    $("pwSave").disabled = false;
+  }
 }
 
 async function joinWithInvite() {
@@ -1045,11 +1159,23 @@ async function boot() {
   sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
   $("googleBlock").hidden = !cfg.google;
   // Arriving from a password-reset email: ask for the new password first.
+  // The link lands on /circle/?reset=1 with type=recovery in the hash (or an
+  // error there when it has expired). Read both before Supabase tidies the
+  // URL up.
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const query = new URLSearchParams(location.search);
+  const recovering = query.get("reset") === "1" || hash.get("type") === "recovery";
+  const linkError = hash.get("error_description") || query.get("error_description");
   sb.auth.onAuthStateChange((event) => {
     if (event === "PASSWORD_RECOVERY") setMode("reset");
   });
   const { data: { session } } = await sb.auth.getSession();
+  if (linkError && recovering) {
+    history.replaceState(null, "", RETURN_TO);
+    return setMode("forgot", RESET_EXPIRED);
+  }
   if ($("gate").dataset.mode === "reset") return;
+  if (recovering) return session ? setMode("reset") : setMode("forgot", RESET_EXPIRED);
   if (session) await enter(); else setMode("signin");
 }
 
@@ -1061,6 +1187,66 @@ async function showMe() {
     ME = await api("/api/member/me");
   } catch (e) { return; }
   renderMe();
+  loadProgress();
+}
+
+// ---------- my progress ----------
+//
+// The member's own survey answers over time (GET /api/member/progress). Only
+// their scores, never anyone else's, and never what they wrote.
+
+async function loadProgress() {
+  try {
+    const { entries } = await api("/api/member/progress");
+    renderProgress(entries);
+  } catch (e) {
+    $("meProgress").innerHTML = `<div class="emptyline">Couldn't load your progress just now. Try again in a moment.</div>`;
+  }
+}
+
+const shortDate = (iso) => new Date(iso).toLocaleDateString("en-MY", { day: "numeric", month: "short" });
+
+function renderProgress(entries) {
+  const privacy = `<p class="private">🔒 Only you and the WIP team can see this. Scores are from 1 to 5, from your own survey answers. They're a reflection, not a diagnosis.</p>`;
+  if (!entries.length) {
+    $("meProgress").innerHTML = `<div class="emptyline">Your progress shows up here once you've shared how a Circle went. Look for <strong>Share how it went</strong> under "Circles you've been to".</div>${privacy}`;
+    return;
+  }
+  const pts = entries.filter((e) => e.wellbeing !== null);
+  let summary = "";
+  if (pts.length) {
+    const last = pts[pts.length - 1].wellbeing;
+    summary = `After your latest Circle: <strong>${esc(String(last))} out of 5</strong>.`;
+    if (pts.length > 1) {
+      const diff = Math.round((last - pts[0].wellbeing) * 10) / 10;
+      summary += diff > 0 ? ` That's ${diff} higher than your first.` : diff < 0 ? ` That's ${-diff} lower than your first, and that's okay: every Circle is different.` : " About the same as your first.";
+    }
+  }
+  $("meProgress").innerHTML = `
+    <h3>Wellbeing after your Circles</h3>
+    <p class="lede">${summary || "Share a few more surveys to see a trend."}</p>
+    ${pts.length > 1 ? trendSVG(pts) : ""}
+    ${entries.slice().reverse().map((e) => `<div class="progentry">
+      <b>${esc(e.circle || "Survey")}</b> <small>${esc(shortDate(e.at))}${e.wellbeing !== null ? ` · wellbeing ${esc(String(e.wellbeing))}/5` : ""}</small>
+      ${e.scales.length ? `<div class="bars">${e.scales.map((s) => `<div class="bar"><span>${esc(s.label)}${s.lowerIsBetter ? " <small>(lower is lighter)</small>" : ""}</span>
+        <span class="track"><span class="fill ${s.lowerIsBetter ? "low" : ""}" style="width:${(s.value / 5) * 100}%"></span></span><span class="v">${esc(String(s.value))}</span></div>`).join("")}</div>` : ""}
+    </div>`).join("")}
+    ${privacy}`;
+}
+
+// A small line chart of the wellbeing score (1-5) per survey, oldest first.
+function trendSVG(pts) {
+  const W = 560, H = 160, L = 26, R = 14, T = 12, B = 26;
+  const x = (i) => L + (i * (W - L - R)) / (pts.length - 1);
+  const y = (v) => T + ((5 - v) * (H - T - B)) / 4;
+  const grid = [1, 2, 3, 4, 5].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(29,29,31,.1)"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("");
+  const line = pts.map((p, i) => `${x(i).toFixed(1)},${y(p.wellbeing).toFixed(1)}`).join(" ");
+  const every = Math.ceil(pts.length / 6);
+  const labels = pts.map((p, i) => (i % every === 0 || i === pts.length - 1 ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${esc(shortDate(p.at))}</text>` : "")).join("");
+  const dots = pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.wellbeing)}" r="5" fill="#8ed462" stroke="#1d1d1f" stroke-width="1.5"><title>${esc(shortDate(p.at))}: ${esc(String(p.wellbeing))}/5</title></circle>`).join("");
+  const desc = pts.map((p) => `${shortDate(p.at)} ${p.wellbeing}`).join(", ");
+  return `<svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="Wellbeing out of 5 over time: ${esc(desc)}">${grid}
+    <polyline points="${line}" fill="none" stroke="#2a6f2b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}${labels}</svg>`;
 }
 
 const STATUS_LABEL = {
@@ -1110,7 +1296,10 @@ function renderMe() {
 
   const past = activity.joined.filter((j) => j.past && j.rsvp === "going" && !j.waitlisted);
   $("mePast").innerHTML = past.length
-    ? past.slice().reverse().map((j) => myRow(j, "Attended", "attended")).join("")
+    ? past.slice().reverse().map((j) => myRow(j, "Attended", "attended",
+        j.surveyDone ? `<span class="note">Survey done ✓</span>`
+        : j.surveyUrl ? `<span class="note"><a class="surveybtn" href="${esc(j.surveyUrl)}" target="_blank" rel="noopener">Share how it went →</a></span>`
+        : "")).join("")
     : `<div class="emptyline">Your past Circles will show up here.</div>`;
 
   $("meProfile").innerHTML = profileSummaryHTML(member);
@@ -1127,6 +1316,8 @@ const ROLE_HELP = {
   fighter: "You live with, or are finding your way through, your own mental health journey.",
   caregiver: "You support someone you love through their mental health journey.",
   practitioner: "You work in mental health, therapy, counselling or wellbeing.",
+  leader: "You lead, organise or volunteer in a community group.",
+  public: "You're here to learn, connect and look after your own wellbeing.",
 };
 
 const NOTIFY_CHOICES = [
@@ -1134,6 +1325,7 @@ const NOTIFY_CHOICES = [
   ["reminders", "Reminders", "A nudge a day or two before a Circle you're going to."],
   ["newEvents", "New Circles", "When a new Circle opens for RSVPs."],
   ["listing", "My proposals", "Updates on Circles you've proposed: in review, live, or changes requested."],
+  ["surveys", "How was it?", "A link to share how a Circle went, the day after. Your answers build My progress."],
 ];
 
 let P = null;               // profile answers in progress

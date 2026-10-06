@@ -206,6 +206,16 @@ app.post("/api/chat", async (req, res) => {
       } catch {
         surveyData = { parse_error: true, raw: dataRaw };
       }
+      if (!surveyData || typeof surveyData !== "object") surveyData = { raw: surveyData };
+      // Who answered, and about which Circle, only ever comes from a signed
+      // survey link (see surveyToken), never from the chat itself.
+      delete surveyData.memberId;
+      delete surveyData.eventId;
+      const link = readSurveyToken(req.body.link);
+      if (link) {
+        surveyData.memberId = link.memberId;
+        surveyData.eventId = link.eventId;
+      }
 
       const record = {
         id: crypto.randomUUID(),
@@ -716,7 +726,7 @@ const adminNote = (ev) => (ev.adminNote && ev.adminNote !== "undefined" ? ev.adm
 //   joined   - Circles they RSVP'd "going" to and got a seat (not waitlisted)
 //   proposed - every proposal they submitted, whatever its status
 //   hosted   - their proposals that went live and have now taken place
-function memberActivity(events, memberId) {
+function memberActivity(events, memberId, surveyed = new Set()) {
   const now = Date.now();
   const joined = [];
   const proposals = [];
@@ -752,6 +762,10 @@ function memberActivity(events, memberId) {
         pax: r.pax,
         paymentStatus: r.paymentStatus || null,
         paymentUrl: r.paymentStatus === "pending" && needsPayment(d) ? d.paymentUrl : null,
+        // Circles they had a seat at and that have happened can be reviewed
+        // in the impact survey, once.
+        surveyDone: surveyed.has(ev.id),
+        surveyUrl: past && r.status === "going" && !r.waitlisted && !surveyed.has(ev.id) ? surveyPath(memberId, ev.id) : null,
       });
     }
   }
@@ -780,6 +794,8 @@ const MEMBER_ROLES = {
   fighter: "Mental health fighter",
   caregiver: "Caregiver",
   practitioner: "Practitioner",
+  leader: "Community leader / volunteer",
+  public: "General public",
 };
 const MY_STATES = [
   "Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan", "Pahang", "Perak", "Perlis",
@@ -817,6 +833,101 @@ const memberProfile = (m) => {
     profileComplete: Boolean(m.name && roles.length && d.state),
   };
 };
+
+// ---------- post-Circle survey links ----------
+//
+// "Share how it went" opens the impact survey bot (/bot/) with a signed token
+// naming the member and the Circle. The bot sends it back with the finished
+// survey and the server attaches memberId/eventId to the stored response, so
+// a member's answers feed their own progress view. The token is an HMAC over
+// [memberId, eventId, expiry]; a raw member id in a URL is never trusted.
+
+const SURVEY_LINK_KEY = crypto
+  .createHash("sha256")
+  .update(
+    "survey-link:" +
+      (process.env.SURVEY_LINK_SECRET ||
+        process.env.SURVEY_SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        ADMIN_PASSWORD)
+  )
+  .digest();
+const SURVEY_LINK_DAYS = 30;
+
+function surveyToken(memberId, eventId) {
+  const exp = Math.floor(Date.now() / 1000) + SURVEY_LINK_DAYS * 86400;
+  const body = Buffer.from(JSON.stringify([memberId, eventId, exp])).toString("base64url");
+  return `${body}.${crypto.createHmac("sha256", SURVEY_LINK_KEY).update(body).digest("base64url")}`;
+}
+
+// { memberId, eventId } for a valid, unexpired token; null for anything else.
+function readSurveyToken(token) {
+  if (typeof token !== "string" || token.length > 600) return null;
+  const [body, sig] = token.split(".");
+  if (!body || !sig) return null;
+  const want = crypto.createHmac("sha256", SURVEY_LINK_KEY).update(body).digest();
+  const got = Buffer.from(sig, "base64url");
+  if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return null;
+  try {
+    const [memberId, eventId, exp] = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (typeof memberId !== "string" || typeof eventId !== "string" || !(exp * 1000 > Date.now())) return null;
+    return { memberId, eventId };
+  } catch {
+    return null;
+  }
+}
+
+const surveyPath = (memberId, eventId) =>
+  `/bot/?program=wip-harmoni-circle&event=${encodeURIComponent(eventId)}&m=${surveyToken(memberId, eventId)}`;
+
+// Event ids this member has already answered the survey for.
+const surveyedEvents = (responses, memberId) =>
+  new Set(
+    responses
+      .map((r) => r.data || {})
+      .filter((d) => d.memberId === memberId && d.eventId)
+      .map((d) => d.eventId)
+  );
+
+// Public, for the bot page: what a survey link is about, so it can say
+// "Sharing about: <Circle>". Says nothing about the member.
+app.get("/api/survey/link", async (req, res) => {
+  const link = readSurveyToken(req.query.m);
+  if (!link) return res.status(400).json({ error: "This survey link has expired. You can still take the survey, or open a fresh link from My Circles." });
+  try {
+    const events = await storage.loadEvents();
+    const ev = events.find((e) => e.id === link.eventId);
+    res.json({ ok: true, title: ev ? ev.data.title : null, dateTime: ev ? ev.data.dateTime : null, program: "WIP Harmoni Circle" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// A member's own survey answers over time, for "My progress". Only their own
+// responses, and only scores: never transcripts, free-text answers or anyone
+// else's data.
+app.get("/api/member/progress", requireMember, async (req, res) => {
+  try {
+    const [responses, events] = await Promise.all([storage.loadResponses(), storage.loadEvents()]);
+    const titles = new Map(events.map((e) => [e.id, e.data && e.data.title]));
+    const entries = responses
+      .filter((r) => r.data && r.data.memberId === req.member.id)
+      .map((r) => {
+        const { wellbeing, scales } = stats.personalScores(r.data);
+        return {
+          at: r.submittedAt,
+          eventId: r.data.eventId || null,
+          circle: titles.get(r.data.eventId) || null,
+          wellbeing,
+          scales,
+        };
+      })
+      .sort((a, b) => new Date(a.at) - new Date(b.at));
+    res.json({ entries });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Public: tells the page whether logins are on and how to reach Supabase.
 // The anon key is meant for browsers; it grants nothing the RLS policies
@@ -891,10 +1002,10 @@ app.post("/api/member/join", requireUser, async (req, res) => {
 
 app.get("/api/member/me", requireMember, async (req, res) => {
   try {
-    const events = await storage.loadEvents();
+    const [events, responses] = await Promise.all([storage.loadEvents(), storage.loadResponses()]);
     res.json({
       member: memberProfile(req.member),
-      activity: memberActivity(events, req.member.id),
+      activity: memberActivity(events, req.member.id, surveyedEvents(responses, req.member.id)),
       profileOptions: { roles: MEMBER_ROLES, states: MY_STATES },
     });
   } catch (e) {
@@ -1420,6 +1531,47 @@ function cronAuthorized(req) {
   return crypto.timingSafeEqual(hash(req.headers.authorization || ""), hash(`Bearer ${secret}`));
 }
 
+// After a Circle: one "How was it?" email per member who had a seat, for
+// Circles that started between 2 and 50 hours ago (the cron runs daily, so
+// each Circle gets one pass). data.surveyInvitesSent keeps it to once, and
+// anyone who has already answered for that Circle is skipped.
+const SURVEY_AFTER_MS = 2 * 3600_000;
+const SURVEY_WINDOW_MS = 50 * 3600_000;
+
+async function sendSurveyInvites(events, byId, now) {
+  const report = [];
+  let responses = null;
+  for (let index = 0; index < events.length; index++) {
+    const record = events[index];
+    const d = record.data || {};
+    const start = new Date(d.dateTime).getTime();
+    const ago = now - start;
+    if (!["approved", "completed"].includes(record.status) || !(ago >= SURVEY_AFTER_MS && ago <= SURVEY_WINDOW_MS)) continue;
+
+    const already = d.surveyInvitesSent || {};
+    const due = (Array.isArray(d.rsvps) ? d.rsvps : [])
+      .filter((r) => r.status === "going" && !r.waitlisted && r.memberId && !already[r.memberId])
+      .map((r) => byId.get(r.memberId))
+      .filter((m) => notify.wants(m, "surveys"));
+    if (!due.length) continue;
+
+    if (!responses) responses = await storage.loadResponses();
+    const msgs = due
+      .filter((m) => !surveyedEvents(responses, m.id).has(record.id))
+      .map((m) => ({ ...notify.surveyInvite(m, d, notify.SITE_URL + surveyPath(m.id, record.id)), memberId: m.id }));
+    const sent = await notify.sendMany(msgs.map(({ memberId, ...msg }) => msg));
+    const sentTo = new Set(sent.map((s) => s.to));
+    const reached = msgs.filter((msg) => sentTo.has(msg.to)).map((msg) => msg.memberId);
+    if (reached.length) {
+      const at = new Date().toISOString();
+      d.surveyInvitesSent = { ...already, ...Object.fromEntries(reached.map((id) => [id, at])) };
+      await storage.updateEvent(index, record);
+    }
+    report.push({ id: record.id, due: msgs.length, sent: reached.length });
+  }
+  return report;
+}
+
 app.get("/api/cron/reminders", async (req, res) => {
   if (!process.env.CRON_SECRET) return res.status(503).json({ error: "CRON_SECRET is not set" });
   if (!cronAuthorized(req)) return res.status(401).json({ error: "Unauthorized" });
@@ -1452,7 +1604,8 @@ app.get("/api/cron/reminders", async (req, res) => {
       }
       report.push({ id: record.id, due: due.length, sent: reached.length });
     }
-    res.json({ ok: true, events: report });
+    const surveys = await sendSurveyInvites(events, byId, now);
+    res.json({ ok: true, events: report, surveys });
   } catch (e) {
     console.error("Reminder run failed:", e.message);
     res.status(500).json({ error: e.message });
