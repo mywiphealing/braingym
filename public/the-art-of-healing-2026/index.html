@@ -409,7 +409,7 @@ img:is([sizes=auto i],[sizes^="auto," i]){contain-intrinsic-size:3000px 1500px}
    festival's deep green */
 .aoh__partners{background:var(--aoh-forest);color:#fff;text-align:center}
 .aoh__partners .aoh__eyebrow{color:var(--aoh-banana)}
-.aoh__logos{list-style:none;margin:8px auto 0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:28px 56px;max-width:1000px}
+.aoh .aoh__logos{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;justify-items:center;gap:28px 32px}
 .aoh__logos li{margin:0}
 .aoh__logos img{width:auto;max-width:100%}
 .aoh__logos .aoh__logo--suritma{height:44px}
@@ -433,7 +433,7 @@ img:is([sizes=auto i],[sizes^="auto," i]){contain-intrinsic-size:3000px 1500px}
   .aoh__timeline time{padding:10px 16px 0;background:none}
   .aoh__timeline a{padding:4px 16px 14px}
   .aoh__quote p{font-size:22px}
-  .aoh__logos{gap:24px 32px}
+  .aoh .aoh__logos{grid-template-columns:repeat(2,minmax(0,1fr));gap:32px 24px}
   .aoh__logos .aoh__logo--suritma{height:32px}
   .aoh__logos .aoh__logo--mika{height:64px}
   .aoh__logos .aoh__logo--diced{height:52px}
