@@ -63,7 +63,7 @@ function matcher(theme) {
 }
 
 // rows: [{ texts: [string] }] - one entry per participant, holding their
-// reflection answers and AI-read themes. Returns { n, items } where n is how
+// reflection answers and the themes read from them. Returns { n, items } where n is how
 // many participants left any usable words and each item counts the
 // participants whose words touch that theme.
 function impactWords(programId, rows) {

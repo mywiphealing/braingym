@@ -289,10 +289,11 @@ function optionCounts(q, datas) {
   return { n, items };
 }
 
-// A sentence or two per programme, written from its own numbers, so a reader
-// gets the story before the charts. Only states what the data shows.
+// A few short points per programme, written from its own numbers, so a reader
+// gets the story before the charts. One fact per point, so it scans easily.
+// Only states what the data shows.
 function narrative(p) {
-  if (!p.count) return "No responses yet for this programme.";
+  if (!p.count) return ["No responses yet for this programme."];
   const parts = [`${p.count} ${p.count === 1 ? "person has" : "people have"} completed this survey.`];
   const worth = p.shift.find((s) => s.before !== null && s.after !== null);
   if (worth) parts.push(`${worth.label.replace(/ \(.*/, "")} moved from ${worth.before} before the session to ${worth.after} after (out of 5).`);
@@ -303,21 +304,22 @@ function narrative(p) {
     parts.push(
       top.average === low.average
         ? `Every rated statement averages ${top.average} / 5.`
-        : `Highest rated: "${top.label}" at ${top.average} / 5. Lowest: "${low.label}" at ${low.average} / 5.`
+        : `Highest rated: "${top.label}", at ${top.average} out of 5.`
     );
+    if (top.average !== low.average) parts.push(`Lowest rated: "${low.label}", at ${low.average} out of 5.`);
   } else if (rated.length === 1) {
     parts.push(`"${rated[0].label}" averages ${rated[0].average} / 5.`);
   }
   for (const c of p.charts.filter((c) => c.n >= MIN_N).slice(0, 2)) {
     const top = c.items.slice().sort((a, b) => b.count - a.count)[0];
-    if (top && top.count) parts.push(`${c.label}: most chose "${top.label}" (${top.count} of ${c.n}).`);
+    if (top && top.count) parts.push(`${c.label.replace(/\?$/, "")}: the most common answer was "${top.label}" (${top.count} of ${c.n} people).`);
   }
-  return parts.join(" ");
+  return parts;
 }
 
 // What a participant said about the session, for reading impact themes:
 // their reflection answers (not the pre-session mood or suggestions), the
-// next step Seni Scape asks about, and the AI-read themes.
+// next step Seni Scape asks about, and the themes read from their answers.
 const REFLECTION_SKIP = new Set(["suggestions", "pre_mood"]);
 function reflectionTexts(r) {
   const d = r.data || {};
@@ -382,7 +384,8 @@ function programPanels(responses) {
       // The programme's intended outcomes, counted in participants' own words.
       impact: impact.impactWords(p.id, rs.map((r) => ({ texts: reflectionTexts(r) }))),
     };
-    panel.narrative = narrative(panel);
+    panel.narrativePoints = narrative(panel);
+    panel.narrative = panel.narrativePoints.join(" ");
     return panel;
   });
 }
