@@ -152,6 +152,13 @@
   .intro .tags span:nth-child(1) { background: var(--pink); transform: rotate(-2deg); }
   .intro .tags span:nth-child(2) { background: var(--banana-pastel); transform: rotate(1.5deg); }
   .intro .tags span:nth-child(3) { background: var(--coral-site); color: var(--white); border-color: var(--coral-site); transform: rotate(-1deg); }
+  /* ── Language choice, before the chat starts ── */
+  .lang-pick { margin-top: 16px; padding-top: 14px; border-top: 1.5px dashed rgba(29,29,31,.18); }
+  .lang-pick .lang-q { font-weight: 700; color: var(--ink); margin-top: 0; }
+  .lang-pick .lang-q span { display: block; font-weight: 400; font-style: italic; color: var(--muted); }
+  .lang-pick .chips { padding-left: 0; margin-top: 10px; max-width: none; }
+  .lang-pick .chip { font-weight: 700; padding: 11px 22px; font-size: .95rem; }
+  form[hidden] { display: none; }
   .intro .sticker { position: absolute; width: 46px; top: -20px; right: -12px; transform: rotate(14deg); }
 
   .row { display: flex; align-items: flex-end; gap: 8px; max-width: 88%; animation: settle .38s cubic-bezier(.2,.9,.3,1.25) both; }
@@ -394,6 +401,13 @@
       <p>Like our workshops, no artistic skill is required. Short, long or messy, in English or Bahasa: it all counts.</p>
       <p class="bm">Tiada jawapan salah. Kongsi cerita anda.</p>
       <div class="tags"><span>Honest</span><span>Anonymous-friendly</span><span>EN / BM</span></div>
+      <div class="lang-pick" id="langPick">
+        <p class="lang-q">Which language would you like to answer in?<span>Dalam bahasa apakah anda ingin menjawab?</span></p>
+        <div class="chips" role="group" aria-label="Language / Bahasa">
+          <button type="button" class="chip" data-lang="en">English</button>
+          <button type="button" class="chip" data-lang="ms">Bahasa Malaysia</button>
+        </div>
+      </div>
     </section>
   </div>
 
@@ -413,6 +427,26 @@ const send = document.getElementById("send");
 const hero = document.getElementById("hero");
 
 let messages = [];
+// Chosen before the chat starts; until then nothing is sent.
+let lang = null;
+// The page's own words, in the chosen language.
+const T = {
+  en: {
+    placeholder: "Type here…", typing: "typing...", retry: "please try again",
+    multiHint: "Choose all that apply", next: "Next →",
+    thanks: "Thank you, your story ripples outward. &#129293;",
+    thanksSub: "Healing isn't one-size-fits-all, and what you shared helps shape what we build next.",
+    discord: "Join our Discord hangout", explore: "Explore myWIPhealing",
+  },
+  ms: {
+    placeholder: "Taip di sini…", typing: "menaip...", retry: "sila cuba lagi",
+    multiHint: "Pilih semua yang berkenaan", next: "Seterusnya →",
+    thanks: "Terima kasih, cerita anda memberi kesan. &#129293;",
+    thanksSub: "Penyembuhan tidak sama bagi semua orang, dan perkongsian anda membantu membentuk apa yang kami bina seterusnya.",
+    discord: "Sertai ruang Discord kami", explore: "Terokai myWIPhealing",
+  },
+};
+const t = (key) => T[lang || "en"][key];
 let busy = false;
 
 // Opened from "Share how it went" in My Circles (or the post-Circle email):
@@ -499,7 +533,7 @@ function addBubble(text, cls) {
 function addTyping() {
   const { row, msg } = addRow("ai");
   msg.insertAdjacentHTML("beforeend",
-    '<span class="dots"><i></i><i></i><i></i></span><span class="sr">typing... / menaip...</span>');
+    '<span class="dots"><i></i><i></i><i></i></span><span class="sr">' + t("typing") + '</span>');
   scrollDown();
   return row;
 }
@@ -537,12 +571,12 @@ function showChips(options, multi) {
   if (multi) {
     const hint = document.createElement("p");
     hint.className = "chips-hint";
-    hint.textContent = "Choose all that apply / Pilih semua yang berkenaan";
+    hint.textContent = t("multiHint");
     chipRow.prepend(hint);
     next = document.createElement("button");
     next.type = "button";
     next.className = "chip-next";
-    next.textContent = "Next →";
+    next.textContent = t("next");
     next.disabled = true;
     // Keep the participant's tap order out of it: send in the listed order.
     next.onclick = () => sendAnswer(options.filter((o) => picked.has(o)).join(", "));
@@ -590,11 +624,11 @@ function showDone() {
   const card = document.createElement("section");
   card.className = "done-card";
   card.innerHTML = `
-    <h2>Thank you, your story ripples outward. &#129293;</h2>
-    <p>Terima kasih. Healing isn't one-size-fits-all, and what you shared helps shape what we build next.</p>
+    <h2>${t("thanks")}</h2>
+    <p>${t("thanksSub")}</p>
     <div class="links">
-      <a class="fill" href="https://discord.com/invite/5RRKHNEsKw" target="_blank" rel="noopener">Join our Discord hangout</a>
-      <a class="line" href="/">Explore myWIPhealing</a>
+      <a class="fill" href="https://discord.com/invite/5RRKHNEsKw" target="_blank" rel="noopener">${t("discord")}</a>
+      <a class="line" href="/">${t("explore")}</a>
     </div>`;
   // Stickers pop onto the card's corners, clear of the text
   const bursts = [
@@ -617,7 +651,7 @@ function showDone() {
 }
 
 async function sendAnswer(text) {
-  if (!text || busy) return;
+  if (!text || busy || !lang) return;
   clearChips();
   messages.push({ role: "user", content: text });
   addBubble(text, "user");
@@ -633,7 +667,7 @@ async function callAI() {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, link: surveyLink }),
+      body: JSON.stringify({ messages, lang, link: surveyLink }),
     });
     const data = await res.json();
     typing.remove();
@@ -653,7 +687,7 @@ async function callAI() {
     }
   } catch (e) {
     typing.remove();
-    addBubble("⚠️ " + e.message + " - please try again / sila cuba lagi", "error");
+    addBubble("⚠️ " + e.message + " - " + t("retry"), "error");
   } finally {
     busy = false;
     send.disabled = false;
@@ -690,8 +724,22 @@ chat.addEventListener("scroll", () => {
   else if (chat.scrollTop < 8 && chat.scrollHeight > chat.clientHeight + 160) hero.classList.remove("slim");
 }, { passive: true });
 
-// kick off: ask the AI for its greeting + first question
-showCircleLink().then(callAI);
+// kick off once a language is picked: the whole chat runs in that language,
+// then ask the AI for its greeting + first question. A Circle link note is
+// shown straight away; its programme must be known before the first reply.
+const linkReady = showCircleLink();
+const langPick = document.getElementById("langPick");
+form.hidden = true;
+langPick.querySelectorAll("[data-lang]").forEach((b) => {
+  b.onclick = () => {
+    lang = b.dataset.lang;
+    document.documentElement.lang = lang;
+    input.placeholder = t("placeholder");
+    langPick.remove();
+    form.hidden = false;
+    linkReady.then(callAI);
+  };
+});
 </script>
 </body>
 </html>

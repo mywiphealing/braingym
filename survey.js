@@ -118,7 +118,7 @@ const PROGRAM_QUESTION = {
 };
 
 // Demographics more than one programme asks, defined once.
-const NAME = { field: "name", optional: true, text: "Name or nickname / Nama atau nama samaran (anonymous is fine)" };
+const NAME = { field: "name", optional: true, text: "Name or nickname (anonymous is fine) / Nama atau nama samaran (tanpa nama pun boleh)" };
 const AGE_GROUP = { field: "age_group", text: "Age group / Golongan umur", options: ["Under 13", "13-17", "18-25", "26-40", "41-60", "60+"] };
 const GENDER = {
   field: "gender",
@@ -145,7 +145,7 @@ const SECTION_A = {
     NAME,
     AGE_GROUP,
     GENDER,
-    { field: "location", examples: ["Kuala Lumpur", "Selangor", "Penang / Pulau Pinang", "Johor"], text: "Location / Lokasi (city or state / bandar atau negeri)" },
+    { field: "location", examples: ["Kuala Lumpur", "Selangor", "Penang / Pulau Pinang", "Johor"], text: "Location (city or state) / Lokasi (bandar atau negeri)" },
     EMAIL,
     PHONE,
     {
@@ -565,21 +565,41 @@ const GENERAL_SECTIONS = [
 
 const sectionsFor = (id) => (PROGRAM_SECTIONS[id] || { sections: GENERAL_SECTIONS }).sections;
 
-// ---------- rendering ----------
+// ---------- language ----------
 
-function buttonsFor(q) {
-  if (q.scale) return q.scale;
-  if (q.options) return q.options;
-  const base = q.examples || [];
-  return q.optional ? [...base, "Skip / Langkau"] : base;
+// The participant picks English or Bahasa Malaysia before the chat starts.
+// Every bilingual string is written "English / Bahasa"; inLang() keeps the
+// half for the chosen language. Any other lang keeps both, as before.
+// A leading "3 - " (scale point) is kept on either half.
+const LANGS = { en: "English", ms: "Bahasa Malaysia" };
+
+function inLang(s, lang) {
+  if (!LANGS[lang] || typeof s !== "string") return s;
+  const [, prefix = "", rest] = s.match(/^(\d - )?([\s\S]*)$/);
+  const i = rest.indexOf(" / ");
+  if (i < 0) return s;
+  return prefix + (lang === "en" ? rest.slice(0, i) : rest.slice(i + 3));
 }
 
-function renderQuestion(q, n) {
-  const parts = [`${n}.${q.optional ? " (optional)" : ""} ${q.text}`];
+// ---------- rendering ----------
+
+function buttonsFor(q, lang) {
+  let btns;
+  if (q.scale) btns = q.scale;
+  else if (q.options) btns = q.options;
+  else btns = q.optional ? [...(q.examples || []), "Skip / Langkau"] : q.examples || [];
+  return btns.map((b) => inLang(b, lang));
+}
+
+// The Scale/Options lines stay bilingual in every language: they are what
+// the notes and the stored values refer to. Only the text and buttons the
+// participant sees are cut down to their language.
+function renderQuestion(q, n, lang) {
+  const parts = [`${n}.${q.optional ? " (optional)" : ""} ${inLang(q.text, lang)}`];
   if (q.scale) parts.push(`   Scale: ${q.scale.join(" | ")}`);
   else if (q.options) parts.push(`   Options: ${q.options.join(" | ")}`);
   if (q.note) parts.push(`   ${q.note}`);
-  const btns = buttonsFor(q);
+  const btns = buttonsFor(q, lang);
   if (btns.length) parts.push(`   Buttons: <options>${JSON.stringify(btns)}</options>`);
   return parts.join("\n");
 }
@@ -604,15 +624,16 @@ function completionTemplate(programId) {
 }
 
 // One programme's questionnaire from question `n` on, under its IF heading.
-function renderProgramBranch(program, heading, n) {
+function renderProgramBranch(program, heading, n, lang) {
   const { intro } = PROGRAM_SECTIONS[program.id] || {};
+  const inLanguage = LANGS[lang] ? `in ${LANGS[lang]}` : "in both languages";
   const lines = [heading];
-  if (intro) lines.push("", `Before Question ${n}, in the same message and in both languages, briefly: ${intro} Then give the first section's intro and ask Question ${n}.`);
+  if (intro) lines.push("", `Before Question ${n}, in the same message and ${inLanguage}, briefly: ${intro} Then give the first section's intro and ask Question ${n}.`);
 
   for (const section of sectionsFor(program.id)) {
     lines.push("", section.title);
-    if (section.intro) lines.push(`Section intro - open the message that asks Question ${n} with this, in both languages, kept to one or two short sentences: ${section.intro}`);
-    for (const q of section.questions) lines.push(renderQuestion(q, n++));
+    if (section.intro) lines.push(`Section intro - open the message that asks Question ${n} with this, ${inLanguage}, kept to one or two short sentences: ${section.intro}`);
+    for (const q of section.questions) lines.push(renderQuestion(q, n++, lang));
   }
 
   lines.push(
@@ -624,42 +645,55 @@ function renderProgramBranch(program, heading, n) {
 }
 
 // A group: its follow-up question as Question 2, then one branch per answer.
-function renderGroupBranch(groupId) {
+function renderGroupBranch(groupId, lang) {
   const group = PROGRAM_GROUPS[groupId];
   const lines = [
     `>>> IF the participant chose "${group.label}":`,
     "",
-    renderQuestion(group.question, 2),
+    renderQuestion(group.question, 2, lang),
     "",
     "Question 2 decides which questionnaire follows. Continue with ONLY the matching one below.",
   ];
   const members = PROGRAMS.filter((p) => p.group === groupId);
   for (const p of members) {
-    const answers = group.question.options.filter((_, i) => group.routes[i] === p.id).map((o) => `"${o.split(" / ")[0]}"`);
-    lines.push("", renderProgramBranch(p, `>>>> IF the answer to Question 2 was ${answers.join(" or ")}:`, 3));
+    const answers = group.question.options.filter((_, i) => group.routes[i] === p.id).flatMap((o) => [...new Set([inLang(o, "en"), inLang(o, lang)])].map((a) => `"${a}"`));
+    lines.push("", renderProgramBranch(p, `>>>> IF the answer to Question 2 was ${answers.join(" or ")}:`, 3, lang));
   }
   return lines.join("\n");
 }
 
-function buildSystemPrompt() {
+// lang: "en" or "ms" runs the whole chat in that one language; anything else
+// keeps the original bilingual chat.
+function buildSystemPrompt(lang) {
   const seenGroups = new Set();
   const branches = PROGRAMS.map((p) => {
-    if (!p.group) return renderProgramBranch(p, `>>> IF the participant chose "${p.label}":`, 2);
+    if (!p.group) return renderProgramBranch(p, `>>> IF the participant chose "${p.label}":`, 2, lang);
     if (seenGroups.has(p.group)) return null;
     seenGroups.add(p.group);
-    return renderGroupBranch(p.group);
+    return renderGroupBranch(p.group, lang);
   }).filter(Boolean).join("\n\n");
+  const one = LANGS[lang];
+  const inLanguage = one ? `in ${one}` : "in both languages";
+  const language = one
+    ? `The participant chose to answer in ${one}. Write EVERY message only in ${one}: greetings, questions, section intros, clarifications and the thank-you. Never add a translation in the other language. If they type in the other language anyway, understand it and carry on in ${one}.
+
+STORED VALUES DO NOT CHANGE WITH LANGUAGE: the Scale and Options lines below list every choice in both languages, and the notes say what to store. Record exactly what you would record if the participant had tapped the matching bilingual choice - English option names where a note asks for them, plain integers for scales. Keep the participant's own free-text words as they wrote them; do not translate them.`
+    : `Always show the question in both English and Bahasa Malaysia.`;
+  const greeting = lang === "en" ? '"Your voice matters"' : lang === "ms" ? '"Suara anda bermakna"' : '"Your voice matters / Suara anda bermakna"';
+  const numbers = lang === "en" ? '("four")' : lang === "ms" ? '("empat")' : '("four", "empat")';
 
   return `You are "Seni", a warm, gentle bilingual (English & Bahasa Malaysia) assistant running the myWIPhealing impact survey.
 
-Your job: collect answers to ALL the questions below through a friendly chat, ONE question per message. Keep every message short. Always show the question in both English and Bahasa Malaysia.
+Your job: collect answers to ALL the questions below through a friendly chat, ONE question per message. Keep every message short.
 
-Start with a short warm greeting: "Your voice matters / Suara anda bermakna" - honest feedback matters, they may remain anonymous, personal details are not compulsory. Then immediately ask Question 1.
+LANGUAGE: ${language}
+
+Start with a short warm greeting: ${greeting} - honest feedback matters, they may remain anonymous, personal details are not compulsory. Then immediately ask Question 1.
 
 Rules:
-- Put the question itself - its number and both languages - in bold by wrapping it in **double asterisks**, as its own paragraph. Bold nothing else: greetings, thanks and section intros stay plain.
-- One question per message, in both languages. Do NOT write the options or the scale points in the message text - the buttons show them.
-- Accept free-text answers and map them to the closest option or number yourself. Numbers in words ("four", "empat") count.
+- Put the question itself - its number and its wording ${inLanguage} - in bold by wrapping it in **double asterisks**, as its own paragraph. Bold nothing else: greetings, thanks and section intros stay plain.
+- One question per message, ${inLanguage}. Do NOT write the options or the scale points in the message text - the buttons show them.
+- Accept free-text answers and map them to the closest option or number yourself. Numbers in words ${numbers} count.
 - Questions marked (optional) may be skipped; record null. Never pressure anyone for personal details.
 - If an answer is unclear, ask once to clarify, then accept whatever they give.
 - Do not give advice, diagnoses, or therapy. If someone shares something distressing, reply with one short empathetic sentence and continue.
@@ -676,7 +710,7 @@ Every message that asks a question MUST end with a hidden options block on its o
 
 QUESTION 1 - ask this of EVERYONE:
 
-${renderQuestion(PROGRAM_QUESTION, 1)}
+${renderQuestion(PROGRAM_QUESTION, 1, lang)}
 
 BRANCHING - Question 1 decides everything that comes next.
 Each programme has its own questionnaire. Continue with ONLY the chosen
@@ -686,7 +720,7 @@ Never mention branching, other programmes, or that questions differ.
 ${branches}
 
 WHEN ALL QUESTIONS FOR THE CHOSEN PROGRAMME ARE ANSWERED:
-Send a warm short thank-you in both languages, then append that programme's machine-readable block at the very end of the same message (the participant will not see it).
+Send a warm short thank-you ${inLanguage}, then append that programme's machine-readable block at the very end of the same message (the participant will not see it).
 Fill every field with the participant's actual answers: null for skipped optional fields, plain integers 1-5 for scale fields. The "program" field must keep the exact id shown in the template. The block must be valid JSON on one line.`;
 }
 
@@ -695,14 +729,14 @@ Fill every field with the participant's actual answers: null for skipped optiona
 // buttons, so no question is ever left with only the typing box.
 // The same question can carry different choices per programme, so the
 // programme the participant named earlier in the chat is looked in first.
-function buttonsForReply(reply, history = []) {
+function buttonsForReply(reply, history = [], lang) {
   const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const text = norm(reply);
   let chosen = null;
   for (const m of history.filter((m) => m.role === "user")) {
     const said = String(m.content).trim().toLowerCase();
     for (const [gid, g] of Object.entries(PROGRAM_GROUPS)) {
-      const i = g.question.options.findIndex((o) => o.toLowerCase() === said);
+      const i = g.question.options.findIndex((o) => [o, inLang(o, "en"), inLang(o, "ms")].some((v) => v.toLowerCase() === said));
       if (i >= 0) chosen = g.routes[i];
       else if (said === g.label.toLowerCase() && !chosen) chosen = PROGRAMS.find((p) => p.group === gid).id;
     }
@@ -710,16 +744,19 @@ function buttonsForReply(reply, history = []) {
   }
   let best = null;
   for (const q of [...(chosen ? questionsFor(chosen) : []), ...programQuestions()]) {
-    const stem = norm(q.text.split(" / ")[0]);
-    if (stem && text.includes(stem) && (!best || stem.length > best.stem.length)) best = { q, stem };
+    for (const stem of [norm(inLang(q.text, "en")), norm(inLang(q.text, "ms"))]) {
+      if (stem && text.includes(stem) && (!best || stem.length > best.stem.length)) best = { q, stem };
+    }
   }
-  return best ? buttonsFor(best.q) : [];
+  return best ? buttonsFor(best.q, lang) : [];
 }
 
 // True when the options belong to a tick-all-that-apply question.
 function isMultiSelect(options) {
   if (!Array.isArray(options) || !options.length) return false;
-  return programQuestions().some((q) => q.multi && options.every((o) => q.options.includes(o)));
+  return programQuestions().some((q) => q.multi && (
+    ["both", "en", "ms"].some((lang) => options.every((o) => q.options.some((opt) => inLang(opt, lang) === o)))
+  ));
 }
 
 // True when a set of quick-reply options is a 1-5 rating whose points run
@@ -729,8 +766,8 @@ function isMultiSelect(options) {
 function isLinearScale(options) {
   if (!Array.isArray(options) || options.length !== 5) return false;
   if (!options.every((o, i) => String(o).trim().startsWith(`${i + 1} -`))) return false;
-  const stem = (s) => String(s).trim().toLowerCase().slice(0, 10);
-  return stem(options[0]) !== stem(SCALE_UNDERSTANDING[0]);
+  const norm = (s) => String(s).trim().toLowerCase();
+  return !["both", "en", "ms"].some((lang) => norm(options[0]).startsWith(norm(inLang(SCALE_UNDERSTANDING[0], lang))));
 }
 
 // Field -> human label, for the admin table and CSV export. Generated so a new
@@ -756,6 +793,7 @@ function allFields() {
 }
 
 module.exports = {
+  LANGS,
   PROGRAMS,
   PROGRAM_SECTIONS,
   PROGRAM_GROUPS,

@@ -101,7 +101,11 @@ async function deepseek(messages, jsonMode = false) {
 
 // Generated from survey.js so question numbering, quick-reply buttons and the
 // completion template can never drift apart. Edit the questions there.
-const SYSTEM_PROMPT = survey.buildSystemPrompt();
+// One prompt per language the participant can pick, plus the bilingual one
+// for a chat started without a choice.
+const SYSTEM_PROMPTS = Object.fromEntries(
+  [...Object.keys(survey.LANGS), "both"].map((lang) => [lang, survey.buildSystemPrompt(lang)])
+);
 
 const ANALYSIS_PROMPT = `You analyse survey responses for a creative-expression mental health program. Given one participant's response as JSON, reply with a JSON object with exactly these fields:
 {"sentiment":"positive|mixed|negative","wellbeing_shift":"improved|unchanged|declined|unknown","themes":["2 to 5 short theme keywords"],"summary":"2-3 sentence summary of this participant's experience and the program's impact on them","concern_flag":false,"concern_note":null}
@@ -171,7 +175,8 @@ app.post("/api/chat", async (req, res) => {
     .slice(-100);
 
   try {
-    const msgs = [{ role: "system", content: SYSTEM_PROMPT }, ...history];
+    const lang = survey.LANGS[req.body.lang] ? req.body.lang : "both";
+    const msgs = [{ role: "system", content: SYSTEM_PROMPTS[lang] }, ...history];
     let content = await deepseek(msgs);
     let out = parseAssistant(content);
     if (!out.done && !out.reply) {
@@ -192,12 +197,15 @@ app.post("/api/chat", async (req, res) => {
     }
 
     // Second safety net: the model asked a question but left the block out.
-    if (!done && !options.length) options = survey.buttonsForReply(reply, history);
+    if (!done && !options.length) options = survey.buttonsForReply(reply, history, lang);
 
     if (done) {
       options = [];
       if (!reply) {
-        reply = "Thank you for completing the survey! Terima kasih! \u{1F90D}";
+        reply = {
+          en: "Thank you for completing the survey! \u{1F90D}",
+          ms: "Terima kasih kerana melengkapkan tinjauan ini! \u{1F90D}",
+        }[lang] || "Thank you for completing the survey! Terima kasih! \u{1F90D}";
       }
 
       let surveyData = null;
@@ -216,6 +224,9 @@ app.post("/api/chat", async (req, res) => {
         surveyData.memberId = link.memberId;
         surveyData.eventId = link.eventId;
       }
+      // Which language the participant answered in, for reading their
+      // free-text answers. Stored choices are the same in every language.
+      surveyData.language = lang;
 
       const record = {
         id: crypto.randomUUID(),
