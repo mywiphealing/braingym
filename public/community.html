@@ -14,10 +14,14 @@
 <link rel="stylesheet" href="/wip.css">
 <style>
   .prog-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
-  .prog-intro { font-size: 13.5px; color: var(--muted-strong); margin-bottom: 14px; max-width: 78ch; line-height: 1.55; }
-  .prog-intro .prog-meta { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .prog-intro { font-size: 15.5px; color: var(--ink); margin-bottom: 18px; max-width: 68ch; line-height: 1.65; }
+  .prog-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 14px; }
+  .prog-facts dt { font-weight: 700; color: var(--ink); }
+  .prog-facts dd { margin: 0; color: var(--muted-strong); }
   .prog-head h2 { font-family: var(--font-display); font-size: 24px; line-height: 1.15; }
-  .prog-story { font-size: 14.5px; line-height: 1.6; margin-top: 8px; max-width: 78ch; }
+  .prog-story { margin: 12px 0 0; padding-left: 1.2em; max-width: 68ch; font-size: 15.5px; line-height: 1.6; }
+  .prog-story li + li { margin-top: 6px; }
+  .prog-story li::marker { color: var(--accent); }
   .hbar + .hbar { margin-top: 10px; }
   .hbar-label { font-size: 12.5px; color: var(--muted-strong); font-weight: 600; margin-bottom: 5px; }
   .hbar-row { display: flex; align-items: center; gap: 10px; }
@@ -42,6 +46,27 @@
   .impact-lead { font-size: 14px; margin-bottom: 6px; }
   .word small { font-family: var(--font-mono); font-size: .55em; font-weight: 600; margin-left: 6px; opacity: .75; }
   .word.s0 { color: var(--muted); opacity: .55; font-weight: 500; text-decoration: line-through dotted; text-decoration-thickness: 1px; }
+
+  /* Readability: larger, higher-contrast text; sentence-case labels instead
+     of small capitals; nothing tilted; one idea per line; steady spacing. */
+  body { font-size: 16px; line-height: 1.6; }
+  .card { padding: 24px 26px; }
+  .card h3 { font-size: 1.15rem; line-height: 1.35; align-items: flex-start; }
+  .card h3 .dot { margin-top: .35em; flex-shrink: 0; }
+  .card h3 .avg { font-size: 15px; }
+  .kpi .kpi-label { font-size: 13px; letter-spacing: 0; text-transform: none; font-weight: 600; }
+  .kpi .kpi-context { font-size: 14px; color: var(--muted-strong); line-height: 1.45; margin-top: 8px; }
+  .card-note, .muted { color: var(--muted-strong); }
+  .card-note { font-size: 13.5px; line-height: 1.5; padding-top: 14px; }
+  .hbar + .hbar { margin-top: 14px; }
+  .hbar-label, .bar-group-label { font-size: 14.5px; color: var(--ink); font-weight: 500; line-height: 1.4; }
+  .hbar-val { font-size: 14px; }
+  .bar-row .tier { font-size: 13.5px; color: var(--ink); }
+  .bar-fill { font-size: 13px; }
+  .prog-tabs .btn { font-size: 14.5px; padding: 9px 16px; }
+  .grid > .quote { transform: none; box-shadow: none; }
+  .quote .quote-text { font-style: normal; line-height: 1.65; }
+  .appbar .sticker { display: none; }
   @media (max-width: 900px) { .prog-cols { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -194,7 +219,7 @@ const PROGRAM_INTRO = "Each programme asks its own questions, so each has its ow
 function renderIntro(id) {
   const i = PROGRAM_INFO[id];
   $("progIntro").innerHTML = i
-    ? `${esc(i.text)}<span class="prog-meta">Approach: ${esc(i.approach)} · For: ${esc(i.forWho)}</span>`
+    ? `${esc(i.text)}<dl class="prog-facts"><dt>Approach</dt><dd>${esc(i.approach)}</dd><dt>Who it's for</dt><dd>${esc(i.forWho)}</dd></dl>`
     : esc(PROGRAM_INTRO);
 }
 
@@ -229,32 +254,41 @@ function renderTabs(activeId) {
       onclick="showProgram('${esc(p.id)}')">${esc(p.label)} · ${p.count}</button>`).join("");
 }
 
-// Rough height of a chart card, in bar rows: heading, footnote, one per bar.
-const cardWeight = (title, bars) => 3 + bars + (title.length > 45 ? 1 : 0);
-
-// Split cards into two columns of near-equal height, each keeping the
-// original order. The first card always opens the left column. Up to 14
-// cards every split is tried; beyond that, each card goes to the shorter side.
-function balancedColumns(cards) {
+// Split the programme's chart cards into two columns of near-equal height,
+// each keeping the original order. Cards are first laid out in the left
+// column so their real heights can be measured, then every split is tried
+// (up to 14 cards; beyond that each goes to the shorter side). The first card
+// always opens the left column. On a narrow screen there is one column and
+// the cards simply stay in order.
+function balanceColumns() {
+  const wrap = document.querySelector("#progPanel .prog-cols");
+  if (!wrap) return;
+  const [colA, colB] = wrap.children;
+  const cards = [...wrap.querySelectorAll(".prog-col > .card")].sort((x, y) => x.dataset.i - y.dataset.i);
+  cards.forEach((c) => colA.appendChild(c));
+  if (getComputedStyle(wrap).gridTemplateColumns.split(" ").length < 2 || cards.length < 2) return;
+  const gap = parseFloat(getComputedStyle(colA).rowGap) || 0;
+  const h = cards.map((c) => { c.style.flex = "none"; const v = c.offsetHeight + gap; c.style.flex = ""; return v; });
   const n = cards.length;
-  const total = cards.reduce((t, c) => t + c.w, 0);
+  const total = h.reduce((t, v) => t + v, 0);
   let left = 1;
   if (n <= 14) {
     let best = Infinity;
     for (let m = 1; m < 1 << n; m += 2) {
       let l = 0;
-      for (let i = 0; i < n; i++) if (m & (1 << i)) l += cards[i].w;
+      for (let i = 0; i < n; i++) if (m & (1 << i)) l += h[i];
       if (Math.abs(total - 2 * l) < best) { best = Math.abs(total - 2 * l); left = m; }
     }
   } else {
-    let l = cards[0].w, r = 0;
-    for (let i = 1; i < n; i++) if (l <= r) { left |= 1 << i; l += cards[i].w; } else r += cards[i].w;
+    let l = h[0], r = 0;
+    for (let i = 1; i < n; i++) if (l <= r) { left |= 1 << i; l += h[i]; } else r += h[i];
   }
-  const col = (inLeft) => cards.filter((_, i) => Boolean(left & (1 << i)) === inLeft).map((c) => c.html).join("");
-  return n === 1
-    ? `<div class="prog-cols"><div class="prog-col" style="grid-column:1/-1">${cards[0].html}</div></div>`
-    : `<div class="prog-cols"><div class="prog-col">${col(true)}</div><div class="prog-col">${col(false)}</div></div>`;
+  cards.forEach((c, i) => (left & (1 << i) ? colA : colB).appendChild(c));
 }
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(balanceColumns, 150); });
+// Web fonts change card heights once they arrive, so measure again then.
+if (document.fonts) document.fonts.ready.then(balanceColumns);
 
 function showProgram(id) {
   const p = PROGRAMS.find((x) => x.id === id);
@@ -262,7 +296,7 @@ function showProgram(id) {
   renderTabs(id);
   renderIntro(id);
   renderImpactWords(p);
-  const head = `<div class="card prog-head"><h2>${esc(p.label)}</h2><p class="prog-story">${esc(p.narrative)}</p></div>`;
+  const head = `<div class="card prog-head"><h2>${esc(p.label)}</h2><ul class="prog-story">${(p.narrativePoints || [p.narrative]).map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>`;
   if (!p.count) { $("progPanel").innerHTML = head; return; }
 
   const sent = p.sentiment || {};
@@ -271,20 +305,20 @@ function showProgram(id) {
 
   const cards = [];
   if (p.shift.length) {
-    cards.push({ w: 3 + p.shift.length * 3, html: `<div class="card"><h3><span class="dot"></span> Before → after</h3>
+    cards.push(`<div class="card"><h3><span class="dot"></span> Before → after</h3>
       <div class="bars">${p.shift.map((s) => barPair(s.label, s.before, s.after, 5, s.note)).join("")}</div>
-      <div class="card-note">Same-session scores, self-reported.</div></div>` });
+      <div class="card-note">Same-session scores, self-reported.</div></div>`);
   }
   for (const g of p.groups) {
-    cards.push({ w: cardWeight(g.title, g.items.length), html: `<div class="card"><h3><span class="dot"></span> ${esc(g.title)}<span class="avg">${n1(g.average)} / 5</span></h3>
+    cards.push(`<div class="card"><h3><span class="dot"></span> ${esc(g.title)}<span class="avg">${n1(g.average)} / 5</span></h3>
       ${g.items.map((i) => hbar(i.label, i.average, 5, `${i.average} / 5`)).join("")}
-      <div class="card-note">Average rating, 1–5 · n = ${Math.max(...g.items.map((i) => i.count))}</div></div>` });
+      <div class="card-note">Average rating, 1–5 · n = ${Math.max(...g.items.map((i) => i.count))}</div></div>`);
   }
   for (const c of p.charts) {
     const max = Math.max(1, ...c.items.map((i) => i.count));
-    cards.push({ w: cardWeight(c.label, c.items.filter((i) => i.count).length || 1), html: `<div class="card"><h3><span class="dot"></span> ${esc(c.label)}</h3>
+    cards.push(`<div class="card"><h3><span class="dot"></span> ${esc(c.label)}</h3>
       ${c.items.filter((i) => i.count).map((i) => hbar(i.label, i.count, max, i.count)).join("") || '<div class="muted">No answers yet.</div>'}
-      <div class="card-note">${c.n} ${c.n === 1 ? "person" : "people"} answered${c.multi ? " · more than one choice allowed" : ""}</div></div>` });
+      <div class="card-note">${c.n} ${c.n === 1 ? "person" : "people"} answered${c.multi ? " · more than one choice allowed" : ""}</div></div>`);
   }
   const quotes = (p.testimonials || []).slice(0, 2).map((q) => `
     <div class="quote"><div class="mark">&ldquo;</div>
@@ -295,10 +329,12 @@ function showProgram(id) {
     <div class="grid grid-3">
       ${kpi("Responses", p.count, "", "Completed surveys")}
       ${kpi("Outcome score", p.outcome, "/5", "Mean of this programme's outcome ratings", p.outcome === null)}
-      ${kpi("Positive sessions", posPct, "%", "Share of responses read as positive", posPct === null)}
+      ${kpi("Positive sessions", posPct, "%", "Share of sessions that felt positive", posPct === null)}
     </div>
-    ${cards.length ? balancedColumns(cards) : ""}
+    ${cards.length === 1 ? cards[0] : ""}
+    ${cards.length > 1 ? `<div class="prog-cols"><div class="prog-col">${cards.map((c, i) => c.replace('<div class="card">', `<div class="card" data-i="${i}">`)).join("")}</div><div class="prog-col"></div></div>` : ""}
     ${quotes ? `<div class="grid grid-2">${quotes}</div>` : ""}`;
+  balanceColumns();
 }
 
 function wordClass(count, max) {
@@ -330,7 +366,7 @@ async function load() {
 
   $("hero").innerHTML = [
     kpi("Community Wellbeing Index", s.wellbeingIndex10, "/10", "Mean of post-session wellbeing scales"),
-    kpi("Positive sessions", posPct, "%", "Share of responses read as positive"),
+    kpi("Positive sessions", posPct, "%", "Share of sessions that felt positive"),
     kpi("Net Promoter Score", s.nps === null || s.nps === undefined ? null : Math.round(s.nps), "", s.npsCount ? `Would-recommend 0–10 · n=${s.npsCount}` : "", s.nps === null || s.nps === undefined),
     kpi("Total responses", s.total, "", "All-time submissions"),
   ].join("");
@@ -355,11 +391,11 @@ async function load() {
   const boothRows = boothOrder.filter((k) => booth[k]).map((k) => row(boothLabels[k], booth[k], boothMax)).join("");
   $("landing").innerHTML = sentTotal || boothRows
     ? `<div class="bars">
-        <div class="bar-group-label">How it felt (AI-read)</div>
+        <div class="bar-group-label">How it felt</div>
         ${[["Positive", sent.positive || 0], ["Mixed", sent.mixed || 0], ["Negative", sent.negative || 0]].map(([l, v]) => row(l, v, sentMax)).join("")}
         ${boothRows ? `<div class="bar-group-label" style="margin-top:6px">Booth experience</div>${boothRows}` : ""}
       </div>
-      <div class="card-note">${sentTotal} ${sentTotal === 1 ? "response" : "responses"} read for tone${boothRows ? " · booth rating from Seni Scape & festival visitors" : ""}.</div>`
+      <div class="card-note">Overall feeling across ${sentTotal} ${sentTotal === 1 ? "response" : "responses"}${boothRows ? " · booth rating from Seni Scape & festival visitors" : ""}.</div>`
     : `<div class="muted">No session feedback yet.</div>`;
 
   // Program effectiveness: mean + 1–5 distribution (lights up at 3+ ratings)
