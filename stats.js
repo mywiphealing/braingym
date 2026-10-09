@@ -8,6 +8,7 @@
 // never as fabricated numbers.
 
 const survey = require("./survey");
+const impact = require("./impact");
 
 // Matched 1-5 scale fields and their human labels (used by the admin view).
 const SCALE_FIELDS = {
@@ -314,6 +315,18 @@ function narrative(p) {
   return parts.join(" ");
 }
 
+// What a participant said about the session, for reading impact themes:
+// their reflection answers (not the pre-session mood or suggestions), the
+// next step Seni Scape asks about, and the AI-read themes.
+const REFLECTION_SKIP = new Set(["suggestions", "pre_mood"]);
+function reflectionTexts(r) {
+  const d = r.data || {};
+  const fields = [...QUOTE_FIELDS.filter((f) => !REFLECTION_SKIP.has(f)), "seni_next_step"];
+  const texts = fields.map((f) => d[f]).filter((v) => v !== null && v !== undefined && v !== "").map((v) => (Array.isArray(v) ? v.join(", ") : String(v)));
+  const themes = r.analysis && Array.isArray(r.analysis.themes) ? r.analysis.themes.map(String) : [];
+  return [...texts, ...themes];
+}
+
 // One panel per programme, built from that programme's own questionnaire in
 // survey.js: its rating questions grouped by section, its choice questions as
 // breakdowns, and a before -> after shift where the programme collects one.
@@ -366,6 +379,8 @@ function programPanels(responses) {
       charts,
       // Approved quotes only, from this programme's participants.
       testimonials: approvedTestimonials(rs),
+      // The programme's intended outcomes, counted in participants' own words.
+      impact: impact.impactWords(p.id, rs.map((r) => ({ texts: reflectionTexts(r) }))),
     };
     panel.narrative = narrative(panel);
     return panel;
