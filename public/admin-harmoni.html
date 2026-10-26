@@ -264,7 +264,7 @@ function proposalCard(ev) {
   return `<details class="prop" ${ev.status === "under_review" ? "open" : ""}>
     <summary>
       ${d.coverImage
-        ? `<span class="cov img"><img src="${d.coverImage.data}" alt="Cover photo"></span>`
+        ? `<span class="cov img"><img src="${esc(d.coverImage.data)}" alt="Cover photo"></span>`
         : `<span class="cov" style="background:linear-gradient(120deg, ${esc(d.cover ? d.cover.from : "#F5EFE6")}, ${esc(d.cover ? d.cover.to : "#DEFFA9")})">${esc(d.cover ? d.cover.emoji : "🌿")}</span>`}
       <span class="ttl"><h4>${esc(d.title)}</h4>
         <div class="sub">${esc(d.sessionType || "")} · ${esc(when)} · ${esc(d.venueName || "")} · theme: ${esc(d.theme || "—")} · submitted ${esc(new Date(ev.submittedAt).toLocaleDateString("en-MY", { day: "numeric", month: "short" }))}</div>
@@ -312,8 +312,8 @@ function proposalCard(ev) {
         <div class="attachgrid">${d.attachments.map((a) => {
           const inner = a.type === "application/pdf"
             ? `<div class="pdf">📄<span style="word-break:break-all">${esc(a.name)}</span></div>`
-            : `<img src="${a.data}" alt="${esc(a.name)}">`;
-          return `<a href="${a.data}" download="${esc(a.name)}" title="${esc(a.name)}">${inner}<div class="cap">${esc(a.name)}</div></a>`;
+            : `<img src="${esc(a.data)}" alt="${esc(a.name)}">`;
+          return `<a href="${esc(a.data)}" download="${esc(a.name)}" title="${esc(a.name)}">${inner}<div class="cap">${esc(a.name)}</div></a>`;
         }).join("")}</div>` : ""}
         ${finBlock(d.financials)}
         ${payBlock}

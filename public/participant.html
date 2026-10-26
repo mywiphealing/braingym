@@ -96,8 +96,8 @@
 let token = sessionStorage.getItem("adminToken") || "";
 let participants = [];
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","'":"&quot;","'":"&#39;" }[c]));
-const n1 = (v) => (v === null || v === undefined || v === "" ? "—" : v);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const n1 = (v) => (v === null || v === undefined || v === "" ? "—" : esc(v));
 const when = (t) => (t ? new Date(t).toLocaleDateString() : "—");
 
 function show(view) {

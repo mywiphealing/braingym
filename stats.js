@@ -448,7 +448,10 @@ function communityStats(responses) {
       wordCounts[k] = (wordCounts[k] || 0) + 1;
     }
   }
+  // This feed is public, so a word only shows once MIN_N people share it: a
+  // one-off mood word is one person's own answer (and could be their name).
   const words = Object.entries(wordCounts)
+    .filter(([, count]) => count >= MIN_N)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 24)
     .map(([text, count]) => ({ text, count }));

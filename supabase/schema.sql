@@ -39,8 +39,10 @@ create index if not exists responses_email_idx on public.responses ((data->>'ema
 create index if not exists responses_approved_quote_idx
   on public.responses (id) where approved_quote is not null;
 
+-- Empty search_path: the trigger can't be tricked into resolving names from a
+-- schema someone else controls (Supabase linter 0011).
 create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = '' as $$
 begin
   new.updated_at = now();
   return new;
@@ -113,3 +115,8 @@ create trigger members_set_updated_at
 
 -- Emails and names: service_role only, same as the other tables.
 alter table public.members enable row level security;
+
+-- Supabase's ensure_rls event trigger runs public.rls_auto_enable() as
+-- SECURITY DEFINER. It is only meant to fire on DDL, so nobody calling the REST
+-- API (/rest/v1/rpc/rls_auto_enable) should be able to execute it.
+revoke execute on function public.rls_auto_enable() from public, anon, authenticated;

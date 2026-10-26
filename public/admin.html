@@ -327,7 +327,9 @@ async function genInsights() {
 function exportCSV() {
   if (!allResponses.length) return alert("No responses to export.");
   const cols = ["id", "submittedAt", "sentiment", "wellbeing_shift", "concern_flag", ...Object.keys(FIELD_LABELS)];
-  const escCSV = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  // A leading = + - @ makes Excel/Sheets run the cell as a formula, so those
+  // get a ' in front (participants type these answers themselves).
+  const escCSV = (v) => `"${String(v ?? "").replace(/^[=+\-@\t\r]/, "'$&").replace(/"/g, '""')}"`;
   const lines = [cols.join(",")];
   for (const r of allResponses) {
     const d = r.data || {}, a = r.analysis || {};

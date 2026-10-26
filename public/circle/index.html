@@ -941,7 +941,9 @@
   <a href="https://mywiphealing.com" target="_blank" rel="noopener">mywiphealing.com ↗</a>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Pinned + integrity-checked: this page holds members' sign-in sessions, so a
+     changed or tampered CDN file must fail to load rather than run. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.js" integrity="sha384-xPW3QHswsICVC2mW6BFNwMbhpLkbZ133fKOhxNx3QGGgAOJfL3O9t8r2aWn1aez6" crossorigin="anonymous"></script>
 <script>
 let sb = null;       // Supabase client, once /api/member/config says logins are on
 let ME = null;       // { member, activity } from /api/member/me

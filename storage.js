@@ -300,6 +300,37 @@ function backends() {
   };
 }
 
+// Rate-limit counter shared by every serverless instance: bumps `key` and
+// returns how many hits it has had in the current `windowSec` window. Without
+// Redis (or if Redis errors) it counts per instance in memory, which still
+// brakes a single client hammering one warm instance.
+const memHits = new Map();
+async function hit(key, windowSec) {
+  const k = "rl:" + key;
+  try {
+    if (useUpstash) {
+      const n = await upstash.incr(k);
+      if (n === 1) await upstash.expire(k, windowSec);
+      return n;
+    }
+    if (useNodeRedis) {
+      const client = await getNodeRedis();
+      const n = await client.incr(k);
+      if (n === 1) await client.expire(k, windowSec);
+      return n;
+    }
+  } catch (e) {
+    console.error("Rate limit store error:", e.message);
+  }
+  const now = Date.now();
+  const cur = memHits.get(k);
+  if (!cur || cur.until <= now) {
+    memHits.set(k, { n: 1, until: now + windowSec * 1000 });
+    return 1;
+  }
+  return ++cur.n;
+}
+
 module.exports = {
   loadResponses,
   appendResponse,
@@ -314,6 +345,7 @@ module.exports = {
   health,
   writable,
   writableEvents,
+  hit,
   SCHEMA_VERSION: supabase.SCHEMA_VERSION,
   ready,
   reason,

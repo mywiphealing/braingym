@@ -26,7 +26,9 @@ approved.
 1. Install dependencies: `npm install`
 2. Set values in `.env`:
    - `DEEPSEEK_API_KEY` — DeepSeek API key (https://platform.deepseek.com)
-   - `ADMIN_PASSWORD` — password for the admin-gated dashboards
+   - `ADMIN_PASSWORD` — password for the admin-gated dashboards. On Vercel, admin login stays
+     off until this is set to something other than the local default. Admin sign-ins last 12 hours,
+     and changing it signs every admin out. Login tries are limited to 10 per 15 minutes per address.
    - `MEMBER_INVITE_CODE` — invite code a new account enters once to join the Harmoni Circle
      hub (`MEMBER_PASSWORD` still works as the old name). See "Member logins" below.
    - `SUPABASE_ANON_KEY` — needed for member logins (plus the Supabase URL/service key below)

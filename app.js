@@ -8,6 +8,10 @@ const survey = require("./survey");
 const notify = require("./notify");
 
 const app = express();
+app.disable("x-powered-by");
+// Vercel sits in front of the app, so the caller's address arrives in
+// X-Forwarded-For; trusting the proxy makes req.ip that address.
+app.set("trust proxy", true);
 // 6mb (not the old 1mb): Harmoni Circle proposals carry up to 3 small
 // image/PDF attachments as data URLs alongside the form fields.
 app.use(express.json({ limit: "6mb" }));
@@ -15,13 +19,48 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const API_KEY = process.env.DEEPSEEK_API_KEY;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "changeme123";
+// The default is for local development only. It is published in the README,
+// so in production admin login stays closed until a real password is set.
+const ADMIN_PASSWORD_UNSAFE =
+  Boolean(process.env.VERCEL) &&
+  (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === "changeme123");
 
-// Stateless admin token: derived from the password so it survives
-// serverless instance recycling (no in-memory session store).
-const ADMIN_TOKEN = crypto
+// Stateless admin token "<expiry>.<hmac>": survives serverless instance
+// recycling (no session store), expires after ADMIN_TOKEN_HOURS, and is keyed
+// on the password so changing ADMIN_PASSWORD signs every admin out.
+const ADMIN_TOKEN_KEY = crypto
   .createHash("sha256")
-  .update("seni-admin:" + ADMIN_PASSWORD)
-  .digest("hex");
+  .update("seni-admin:" + (process.env.ADMIN_TOKEN_SECRET || "") + ":" + ADMIN_PASSWORD)
+  .digest();
+const ADMIN_TOKEN_HOURS = 12;
+
+const adminSig = (exp) =>
+  crypto.createHmac("sha256", ADMIN_TOKEN_KEY).update("admin:" + exp).digest("base64url");
+
+function issueAdminToken() {
+  const exp = Math.floor(Date.now() / 1000) + ADMIN_TOKEN_HOURS * 3600;
+  return `${exp}.${adminSig(exp)}`;
+}
+
+function adminTokenValid(token) {
+  const [exp, sig] = String(token).split(".");
+  if (!/^\d+$/.test(exp || "") || Number(exp) < Date.now() / 1000) return false;
+  const a = Buffer.from(sig || "");
+  const b = Buffer.from(adminSig(exp));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Constant-time string comparison (hashing first evens out the lengths).
+function sameSecret(given, secret) {
+  const hash = (s) => crypto.createHash("sha256").update(String(s)).digest();
+  return crypto.timingSafeEqual(hash(given), hash(secret));
+}
+
+// Shared (Redis-backed) brake: true once `name` has been hit more than `max`
+// times by this caller inside `windowSec`.
+async function overLimit(req, name, max, windowSec) {
+  return (await storage.hit(`${name}:${req.ip || "unknown"}`, windowSec)) > max;
+}
 
 // ---------- WIP Harmoni Circle (member event proposals) ----------
 
@@ -115,11 +154,20 @@ const INSIGHTS_PROMPT = `You analyse survey data for myWIPhealing, a set of crea
 
 // ---------- auto-processing ----------
 
+// Fields that identify a participant. The analysis and insights only need
+// scores and free text, so these never leave for the AI provider.
+const IDENTIFYING_FIELDS = ["name", "email", "phone", "location", "memberId", "eventId"];
+function withoutIdentity(data) {
+  const out = { ...(data || {}) };
+  for (const f of IDENTIFYING_FIELDS) delete out[f];
+  return out;
+}
+
 async function analyzeResponse(surveyData) {
   const content = await deepseek(
     [
       { role: "system", content: ANALYSIS_PROMPT },
-      { role: "user", content: JSON.stringify(surveyData) },
+      { role: "user", content: JSON.stringify(withoutIdentity(surveyData)) },
     ],
     true
   );
@@ -165,6 +213,12 @@ app.post("/api/chat", async (req, res) => {
   const notWritable = await storage.writable();
   if (notWritable) return res.status(500).json({ error: notWritable });
 
+  // A full survey is ~40 turns; this leaves room for retries while stopping a
+  // script from running up the AI bill or flooding the response store.
+  if (await overLimit(req, "chat", 150, 60 * 60)) {
+    return res.status(429).json({ error: "Too many messages. Please wait a little and try again." });
+  }
+
   const history = (Array.isArray(req.body.messages) ? req.body.messages : [])
     .filter(
       (m) =>
@@ -172,7 +226,8 @@ app.post("/api/chat", async (req, res) => {
         (m.role === "user" || m.role === "assistant") &&
         typeof m.content === "string"
     )
-    .slice(-100);
+    .slice(-100)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
 
   try {
     const lang = survey.LANGS[req.body.lang] ? req.body.lang : "both";
@@ -265,19 +320,26 @@ app.post("/api/chat", async (req, res) => {
 
 // ---------- admin API ----------
 
-app.post("/api/admin/login", (req, res) => {
-  if (req.body && req.body.password === ADMIN_PASSWORD) {
-    res.json({ token: ADMIN_TOKEN });
+app.post("/api/admin/login", async (req, res) => {
+  if (ADMIN_PASSWORD_UNSAFE) {
+    console.error("Admin login refused: ADMIN_PASSWORD is unset or still the default.");
+    return res.status(503).json({ error: "Admin login is disabled until a strong ADMIN_PASSWORD is set." });
+  }
+  if (await overLimit(req, "admin-login", 10, 15 * 60)) {
+    return res.status(429).json({ error: "Too many tries. Wait 15 minutes and try again." });
+  }
+  const password = typeof (req.body && req.body.password) === "string" ? req.body.password : "";
+  if (password && sameSecret(password, ADMIN_PASSWORD)) {
+    res.json({ token: issueAdminToken() });
   } else {
     res.status(401).json({ error: "Wrong password" });
   }
 });
 
 function requireAdmin(req, res, next) {
+  if (ADMIN_PASSWORD_UNSAFE) return res.status(401).json({ error: "Unauthorized" });
   const token = (req.headers.authorization || "").replace("Bearer ", "");
-  const a = Buffer.from(token);
-  const b = Buffer.from(ADMIN_TOKEN);
-  if (a.length === b.length && crypto.timingSafeEqual(a, b)) return next();
+  if (adminTokenValid(token)) return next();
   res.status(401).json({ error: "Unauthorized" });
 }
 
@@ -366,7 +428,7 @@ app.post("/api/admin/insights", requireAdmin, async (req, res) => {
     if (!responses.length) return res.json({ insights: "No responses yet." });
     const insights = await deepseek([
       { role: "system", content: INSIGHTS_PROMPT },
-      { role: "user", content: JSON.stringify(responses.map((r) => r.data)) },
+      { role: "user", content: JSON.stringify(responses.map((r) => withoutIdentity(r.data))) },
     ]);
     res.json({ insights });
   } catch (e) {
@@ -475,7 +537,12 @@ function fileField(f, label, allowed) {
     throw new Error(`${label} must be ${allowed.has("application/pdf") ? "PNG, JPG, WebP, GIF or PDF" : "a PNG, JPG, WebP or GIF image"}`);
   }
   const data = typeof (f && f.data) === "string" ? f.data : "";
-  if (!data.startsWith(`data:${type};base64,`)) throw new Error(`${label}: file data missing`);
+  // The whole value must be plain base64 after the prefix: admin pages put it
+  // into src/href attributes, so anything else could break out of them.
+  const prefix = `data:${type};base64,`;
+  if (!data.startsWith(prefix) || !/^[A-Za-z0-9+/]+={0,2}$/.test(data.slice(prefix.length))) {
+    throw new Error(`${label}: file data missing`);
+  }
   if (data.length > 1_500_000) throw new Error(`"${name}" is too large — keep each file under ~1MB`);
   return { name, type, data };
 }
@@ -987,6 +1054,11 @@ app.post("/api/member/join", requireUser, async (req, res) => {
     const now = Date.now();
     const tries = (inviteAttempts.get(req.user.id) || []).filter((t) => now - t < INVITE_WINDOW_MS);
     if (tries.length >= INVITE_MAX_TRIES) {
+      return res.status(429).json({ error: "Too many tries. Wait 15 minutes, or ask the WIP team for the code." });
+    }
+    // The per-account brake above is per warm instance and accounts are cheap
+    // to create, so also count guesses per caller across all instances.
+    if (await overLimit(req, "invite", 10, 15 * 60)) {
       return res.status(429).json({ error: "Too many tries. Wait 15 minutes, or ask the WIP team for the code." });
     }
     const code = typeof (req.body && req.body.inviteCode) === "string" ? req.body.inviteCode : "";
