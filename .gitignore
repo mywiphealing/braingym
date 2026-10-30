@@ -3,3 +3,6 @@ node_modules/
 data/
 .vercel
 .env*
+authorized_tokens.json
+*.MP4
+*.mp4
